@@ -1,61 +1,94 @@
-// Service worker for Pakistan Public School Kamber — Management System
-const CACHE_NAME = 'pps-kamber-v1';
-const BASE = '/Pakistan-Public-School-Kamber-/';
+// Service Worker for Pakistan Public School Kamber — PWA
+const CACHE_NAME = 'pps-kamber-v2';
+const BASE = '/';
 
+// Files to cache for offline use
 const CORE_ASSETS = [
-  BASE,
-  BASE + 'index.html',
-  BASE + 'manifest.json',
-  BASE + 'icon-192.png',
-  BASE + 'favicon.png'
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icon-192x192.png',
+  '/icon-512x512.png',
+  '/favicon.png'
 ];
 
+// Install event — cache core assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('✅ Caching core assets...');
+        return cache.addAll(CORE_ASSETS);
+      })
+      .catch((err) => {
+        console.error('❌ Failed to cache assets:', err);
+      })
   );
   self.skipWaiting();
 });
 
+// Activate event — clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
+    caches.keys().then((keys) => {
+      return Promise.all(
         keys
           .filter((key) => key !== CACHE_NAME)
           .map((key) => caches.delete(key))
-      )
-    )
+      );
+    })
   );
   self.clients.claim();
 });
 
-// Network-first for navigation requests, cache-first for everything else
+// Fetch event — network-first for navigation, cache-first for others
 self.addEventListener('fetch', (event) => {
   const req = event.request;
 
+  // For navigation (HTML pages) — try network first, fallback to cached index.html
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, res.clone()));
+          // Cache the response for offline use
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(req, clone);
+          });
           return res;
         })
-        .catch(() => caches.match(BASE + 'index.html'))
+        .catch(() => {
+          // If offline, serve cached index.html
+          return caches.match('/index.html');
+        })
     );
     return;
   }
 
+  // For other assets — cache-first, fallback to network
   event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req).then((res) => {
-        if (res && res.status === 200 && req.url.startsWith(self.location.origin)) {
-          const resClone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone));
+    caches.match(req)
+      .then((cached) => {
+        if (cached) {
+          return cached;
         }
-        return res;
-      });
-    })
+        return fetch(req).then((res) => {
+          // Cache any new valid responses
+          if (res && res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(req, clone);
+            });
+          }
+          return res;
+        });
+      })
+      .catch(() => {
+        // If completely offline and nothing cached
+        return new Response('Offline — please connect to the internet.', {
+          status: 503,
+          statusText: 'Service Unavailable'
+        });
+      })
   );
 });
