@@ -10,6 +10,13 @@ const CORE_ASSETS = [
   './icon-512x512.png'
 ];
 
+// Listen for message from page to skip waiting and activate immediately
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 // Install event — cache core assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
