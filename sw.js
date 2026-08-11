@@ -1,15 +1,13 @@
 // Service Worker for Pakistan Public School Kamber — PWA
-const CACHE_NAME = 'pps-kamber-v2';
-const BASE = '/';
+const CACHE_NAME = 'pps-kamber-v3';
 
-// Files to cache for offline use
+// Relative paths — work whether the site is hosted at root or in a subfolder
 const CORE_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-192x192.png',
-  '/icon-512x512.png',
-  '/favicon.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './icon-192x192.png',
+  './icon-512x512.png'
 ];
 
 // Install event — cache core assets
@@ -59,7 +57,7 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => {
           // If offline, serve cached index.html
-          return caches.match('/index.html');
+          return caches.match('./index.html');
         })
     );
     return;
