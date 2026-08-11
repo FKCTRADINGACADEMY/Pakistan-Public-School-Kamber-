@@ -1,5 +1,5 @@
 // Service Worker for Pakistan Public School Kamber — PWA
-const CACHE_NAME = 'pps-kamber-v3';
+const CACHE_NAME = 'pps-kamber-v5';
 
 // Relative paths — work whether the site is hosted at root or in a subfolder
 const CORE_ASSETS = [
@@ -7,7 +7,8 @@ const CORE_ASSETS = [
   './index.html',
   './manifest.json',
   './icon-192x192.png',
-  './icon-512x512.png'
+  './icon-512x512.png',
+  './offline.html'
 ];
 
 // Listen for message from page to skip waiting and activate immediately
@@ -50,7 +51,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
 
-  // For navigation (HTML pages) — try network first, fallback to cached index.html
+  // For navigation (HTML pages) — try network first, fallback to cached index.html,
+  // and if nothing at all is cached yet, show the friendly offline page instead of
+  // a raw browser/404 error.
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req)
@@ -63,8 +66,13 @@ self.addEventListener('fetch', (event) => {
           return res;
         })
         .catch(() => {
-          // If offline, serve cached index.html
-          return caches.match('./index.html');
+          // If offline, serve cached index.html, else the friendly offline page
+          return caches.match('./index.html')
+            .then((cached) => cached || caches.match('./offline.html'))
+            .then((fallback) => fallback || new Response(
+              '<h1>Internet Connect Karein</h1><p>Ye app pehli baar kholne ke liye internet zaroori hai.</p>',
+              { status: 200, headers: { 'Content-Type': 'text/html' } }
+            ));
         })
     );
     return;
@@ -90,10 +98,7 @@ self.addEventListener('fetch', (event) => {
       })
       .catch(() => {
         // If completely offline and nothing cached
-        return new Response('Offline — please connect to the internet.', {
-          status: 503,
-          statusText: 'Service Unavailable'
-        });
+        return new Response('', { status: 504, statusText: 'Offline' });
       })
   );
 });

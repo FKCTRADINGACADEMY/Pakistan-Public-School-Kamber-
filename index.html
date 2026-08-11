@@ -915,6 +915,19 @@ let printModalFeeId = null;
 
 const ADMIN_EMAILS = ['pakistanps@ppsk.com'.toLowerCase(), 'admin@ppsk.com'.toLowerCase()];
 
+// ===== OFFLINE ADMIN LOGIN CACHE =====
+// Jab bhi admin online login karta hai, uska email+password hash yahan
+// save ho jata hai. Offline hone par isi cache se login allow hota hai.
+const ADMIN_CACHE_KEY = STORAGE_KEY + '_adminAuthCache';
+function getAdminAuthCache(){
+  try{ return JSON.parse(localStorage.getItem(ADMIN_CACHE_KEY) || '{}'); }catch(e){ return {}; }
+}
+function setAdminAuthCache(email, hash){
+  const c = getAdminAuthCache();
+  c[email] = hash;
+  try{ localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(c)); }catch(e){}
+}
+
 // ===== STORAGE FUNCTIONS =====
 function saveData(){
   const data = { students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, qrScanLog, savedAt: new Date().toISOString() };
@@ -1292,6 +1305,14 @@ function doLogin(){
     return;
   }
 
+  const emailLower = u.toLowerCase();
+
+  // Offline admin login — agar net nahi hai, seedha local cache se check karo
+  if(!navigator.onLine){
+    tryOfflineAdminLogin(emailLower, p, errorBox, btn, originalText);
+    return;
+  }
+
   if(!auth){
     errorBox.textContent = 'Cloud login abhi available nahi hai (Firebase connect nahi hai).';
     errorBox.style.display = 'block';
@@ -1305,20 +1326,60 @@ function doLogin(){
       const email = (cred.user.email || '').toLowerCase();
       const isAdmin = ADMIN_EMAILS.includes(email);
       currentRole = isAdmin ? 'admin' : 'user';
+      // Offline login ke liye password hash local cache mein save kar do
+      hashPassword(p).then(hash => setAdminAuthCache(email, hash));
       const displayName = cred.user.displayName || cred.user.email || (isAdmin ? 'School Admin' : 'Staff User');
       enterApp(displayName);
+      btn.disabled = false;
+      btn.textContent = originalText;
     })
     .catch((err)=>{
+      // Network fail ho gaya (jaise net achanak chala gaya) — offline cache try karo
+      if(err.code === 'auth/network-request-failed'){
+        tryOfflineAdminLogin(emailLower, p, errorBox, btn, originalText);
+        return;
+      }
       let msg = 'Ghalat email ya password. Dobara koshish karein.';
       if(err.code === 'auth/invalid-email') msg = 'Email ka format ghalat hai.';
       if(err.code === 'auth/too-many-requests') msg = 'Bohat zyada koshishein — thodi der baad try karein.';
       errorBox.textContent = msg;
       errorBox.style.display = 'block';
-    })
-    .finally(()=>{
       btn.disabled = false;
       btn.textContent = originalText;
     });
+}
+
+// Offline hote hue admin login: pehle kabhi online login karke jo hash cache
+// hua tha usi se match karta hai. Agar cache hi nahi mila to ek dafa online
+// login zaroori hai.
+function tryOfflineAdminLogin(emailLower, p, errorBox, btn, originalText){
+  if(!ADMIN_EMAILS.includes(emailLower)){
+    errorBox.textContent = 'Offline sirf admin email se login ho sakta hai. Staff offline login ke liye "Staff" option chunein.';
+    errorBox.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = originalText;
+    return;
+  }
+  const cache = getAdminAuthCache();
+  const cachedHash = cache[emailLower];
+  if(!cachedHash){
+    errorBox.textContent = 'Offline login ke liye pehle ek dafa internet ke sath login karna zaroori hai.';
+    errorBox.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = originalText;
+    return;
+  }
+  hashPassword(p).then(hash => {
+    if(hash === cachedHash){
+      currentRole = 'admin';
+      enterApp('School Admin (Offline)');
+    } else {
+      errorBox.textContent = 'Ghalat email ya password.';
+      errorBox.style.display = 'block';
+    }
+    btn.disabled = false;
+    btn.textContent = originalText;
+  });
 }
 
 function doLogout(){
