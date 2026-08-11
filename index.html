@@ -946,16 +946,63 @@ function nextStaffCode(){
 }
 function cloudArrayAdd(field, item, docRef){
   docRef = docRef || SCHOOL_DOC;
+  queuePendingSync(field, 'add', item);
   if(!docRef) return;
   docRef.set({ [field]: firebase.firestore.FieldValue.arrayUnion(item) }, { merge:true })
+    .then(()=> removePendingSync(field, 'add', item))
     .catch(err => console.warn('Cloud add failed for ' + field + ':', err));
 }
 function cloudArrayRemove(field, item, docRef){
   docRef = docRef || SCHOOL_DOC;
+  queuePendingSync(field, 'remove', item);
   if(!docRef) return;
   docRef.set({ [field]: firebase.firestore.FieldValue.arrayRemove(item) }, { merge:true })
+    .then(()=> removePendingSync(field, 'remove', item))
     .catch(err => console.warn('Cloud remove failed for ' + field + ':', err));
 }
+
+// ===== PENDING SYNC QUEUE =====
+// Har add/delete jo cloud pe confirm hone tak "pending" rehta hai.
+// Isse purani/nayi entries cloud sync se pehle kabhi bhi khud-ba-khud
+// delete ya overwrite nahi hoti — offline hone par bhi mehfooz rehti hain.
+const PENDING_KEY = STORAGE_KEY + '_pendingSync';
+let pendingSync = [];
+try{ pendingSync = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); }catch(e){ pendingSync = []; }
+
+function savePendingQueue(){
+  try{ localStorage.setItem(PENDING_KEY, JSON.stringify(pendingSync)); }catch(e){}
+}
+function queuePendingSync(field, action, item){
+  pendingSync.push({ field, action, item, ts: Date.now() });
+  savePendingQueue();
+}
+function removePendingSync(field, action, item){
+  const key = JSON.stringify(item);
+  pendingSync = pendingSync.filter(p => !(p.field === field && p.action === action && JSON.stringify(p.item) === key));
+  savePendingQueue();
+}
+// Cloud se naya data aane par, jo changes abhi tak sync nahi huye unhe
+// dobara upar apply karo taake wo gum ya "resurrect" na hon, aur dobara
+// sync try karo.
+function reapplyPendingSync(){
+  if(!pendingSync.length) return;
+  const arraysByField = { students, staff, fees, notices, loginLog, events, examResults, quoteLog, timetable, homework, qrScanLog, galleryPhotos };
+  pendingSync.forEach(p => {
+    const arr = arraysByField[p.field];
+    if(!Array.isArray(arr)) return;
+    const key = JSON.stringify(p.item);
+    const idx = arr.findIndex(x => JSON.stringify(x) === key);
+    if(p.action === 'add' && idx === -1){ arr.push(p.item); }
+    else if(p.action === 'remove' && idx !== -1){ arr.splice(idx, 1); }
+  });
+  // Retry syncing pending items to cloud (safe: cloudArrayAdd/Remove re-queue on failure)
+  const toRetry = pendingSync.slice();
+  toRetry.forEach(p => {
+    if(p.action === 'add') cloudArrayAdd(p.field, p.item);
+    else cloudArrayRemove(p.field, p.item);
+  });
+}
+window.addEventListener('online', reapplyPendingSync);
 function applyData(data){
   if(data.students) students = data.students;
   if(data.staff) staff = data.staff;
@@ -983,6 +1030,7 @@ function loadData(){
   const corePromise = SCHOOL_DOC.get({source:'server'}).catch(()=>SCHOOL_DOC.get()).then(doc=>{
     if(doc.exists){ applyData(doc.data()); }
     else { saveData(); }
+    reapplyPendingSync();
   }).catch(err=>{ console.warn('Cloud se data load nahi ho saka', err); });
   const galleryPromise = SCHOOL_GALLERY_DOC ? SCHOOL_GALLERY_DOC.get({source:'server'}).catch(()=>SCHOOL_GALLERY_DOC.get()).then(doc=>{
     if(doc.exists && doc.data().galleryPhotos){ galleryPhotos = doc.data().galleryPhotos; }
@@ -2746,17 +2794,40 @@ window.addEventListener('offline', ()=>{
 });
 </script>
 
-<!-- ===== SERVICE WORKER REGISTRATION (FIXED) ===== -->
+<!-- ===== SERVICE WORKER REGISTRATION (AUTO-UPDATE) ===== -->
 <script>
-  // FIXED: Service worker ko relative path se register karein
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js')
       .then(function(reg) {
         console.log('✅ Service Worker registered successfully:', reg);
+
+        // Har 5 second mein check karo koi naya version aaya hai ya nahi
+        setInterval(function() {
+          reg.update();
+        }, 5000);
+
+        // Naya version mil jaye to usay turant activate karne ko kaho
+        reg.addEventListener('updatefound', function() {
+          const newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', function() {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
       })
       .catch(function(err) {
         console.log('❌ Service Worker registration failed:', err);
       });
+
+    // Naya SW control lete hi page ek dafa reload ho jaye taake naya content dikhe
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
   }
 </script>
 
