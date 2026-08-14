@@ -339,6 +339,7 @@
         <li><button data-view="qrattendance" onclick="showView('qrattendance')">🔳 QR Attendance</button></li>
         <li><button data-view="timetable" onclick="showView('timetable')">🗓️ Timetable</button></li>
         <li><button data-view="homework" onclick="showView('homework')">📚 Homework / Assignments</button></li>
+        <li><button data-view="workplan" onclick="showView('workplan')">🗂️ Weekly Work Plan</button></li>
         <li><button data-view="notices" onclick="showView('notices')">📢 Notice Board</button></li>
         <li><button data-view="events" onclick="showView('events')">🎉 Events &amp; Vacations</button></li>
         <li><button data-view="gallery" onclick="showView('gallery')">🖼️ Photo Gallery</button></li>
@@ -640,6 +641,39 @@
           </div>
         </div>
 
+        <!-- Weekly Work Plan -->
+        <div class="view" id="view-workplan">
+          <div class="panel">
+            <h3>Teacher Weekly Work Plan Entry</h3>
+            <div class="form-grid">
+              <div class="field"><label>Teacher</label><select id="wpTeacher"></select></div>
+              <div class="field"><label>Class</label><input id="wpClass" type="text" placeholder="e.g. 6"></div>
+              <div class="field"><label>Section</label><input id="wpSection" type="text" placeholder="e.g. A"></div>
+              <div class="field"><label>Subject</label><input id="wpSubject" type="text" placeholder="e.g. Urdu"></div>
+              <div class="field"><label>Week Start Date</label><input id="wpWeekStart" type="date"></div>
+            </div>
+            <div class="form-grid">
+              <div class="field"><label>Monday</label><input id="wpMon" type="text" placeholder="Topic / Lesson"></div>
+              <div class="field"><label>Tuesday</label><input id="wpTue" type="text" placeholder="Topic / Lesson"></div>
+              <div class="field"><label>Wednesday</label><input id="wpWed" type="text" placeholder="Topic / Lesson"></div>
+              <div class="field"><label>Thursday</label><input id="wpThu" type="text" placeholder="Topic / Lesson"></div>
+              <div class="field"><label>Friday</label><input id="wpFri" type="text" placeholder="Topic / Lesson"></div>
+              <div class="field"><label>Saturday</label><input id="wpSat" type="text" placeholder="Topic / Lesson"></div>
+            </div>
+            <div class="field"><label>Notes / Objectives (optional)</label><input id="wpNotes" type="text"></div>
+            <button class="btn green" onclick="addWorkPlan()">+ Save Weekly Plan</button>
+          </div>
+          <div class="panel">
+            <h3>All Weekly Work Plans</h3>
+            <div class="form-grid">
+              <div class="field"><label>Filter by Teacher</label><select id="wpFilterTeacher" onchange="renderWorkPlan()"><option value="">Sab Teachers</option></select></div>
+              <div class="field"><label>Filter by Class</label><select id="wpFilterClass" onchange="renderWorkPlan()"><option value="">Sab Classes</option></select></div>
+            </div>
+            <div id="workPlanList"></div>
+            <div class="empty" id="workPlanEmpty">Koi weekly work plan add nahi hua.</div>
+          </div>
+        </div>
+
         <!-- Notices -->
         <div class="view" id="view-notices">
           <div class="panel">
@@ -902,6 +936,7 @@ let galleryPhotos = [];
 let examResults = [];
 let timetable = [];
 let homework = [];
+let workPlans = [];
 let qrScanLog = [];
 let waSettings = { enabled:false, times:['08:00','11:00','13:30','16:30'], groupLink:'', lastSent:{} };
 let quoteLog = [];
@@ -930,7 +965,7 @@ function setAdminAuthCache(email, hash){
 
 // ===== STORAGE FUNCTIONS =====
 function saveData(){
-  const data = { students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, qrScanLog, savedAt: new Date().toISOString() };
+  const data = { students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, workPlans, qrScanLog, savedAt: new Date().toISOString() };
   const s = document.getElementById('saveStatus');
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -999,7 +1034,7 @@ function removePendingSync(field, action, item){
 // sync try karo.
 function reapplyPendingSync(){
   if(!pendingSync.length) return;
-  const arraysByField = { students, staff, fees, notices, loginLog, events, examResults, quoteLog, timetable, homework, qrScanLog, galleryPhotos };
+  const arraysByField = { students, staff, fees, notices, loginLog, events, examResults, quoteLog, timetable, homework, workPlans, qrScanLog, galleryPhotos };
   pendingSync.forEach(p => {
     const arr = arraysByField[p.field];
     if(!Array.isArray(arr)) return;
@@ -1031,6 +1066,7 @@ function applyData(data){
   if(data.quoteLog) quoteLog = data.quoteLog;
   if(data.timetable) timetable = data.timetable;
   if(data.homework) homework = data.homework;
+  if(data.workPlans) workPlans = data.workPlans;
   if(data.qrScanLog) qrScanLog = data.qrScanLog;
   if(data.galleryPhotos) galleryPhotos = data.galleryPhotos;
 }
@@ -1049,7 +1085,7 @@ function loadData(){
     if(doc.exists && doc.data().galleryPhotos){ galleryPhotos = doc.data().galleryPhotos; }
   }).catch(err=>{}) : Promise.resolve();
   return Promise.all([corePromise, galleryPromise]).then(()=>{
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, qrScanLog, galleryPhotos })); }catch(e){}
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, workPlans, qrScanLog, galleryPhotos })); }catch(e){}
   });
 }
 
@@ -1400,7 +1436,7 @@ function showView(name){
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   document.querySelectorAll('.nav-list button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
-  const titles = {dashboard:'Dashboard', students:'Student Management', staff:'Teachers & Staff', fees:'Fees & Challan', attendance:'Attendance', qrattendance:'QR Code Attendance', timetable:'Timetable', homework:'Homework / Assignments', notices:'Notice Board', events:'Events & Vacations', gallery:'Photo Gallery', results:'Results / Exam Reports', quotes:'WhatsApp Awareness', reports:'Reports', settings:'Settings & Backup', loginlog:'Login Activity'};
+  const titles = {dashboard:'Dashboard', students:'Student Management', staff:'Teachers & Staff', fees:'Fees & Challan', attendance:'Attendance', qrattendance:'QR Code Attendance', timetable:'Timetable', homework:'Homework / Assignments', workplan:'Weekly Work Plan', notices:'Notice Board', events:'Events & Vacations', gallery:'Photo Gallery', results:'Results / Exam Reports', quotes:'WhatsApp Awareness', reports:'Reports', settings:'Settings & Backup', loginlog:'Login Activity'};
   document.getElementById('viewTitle').textContent = titles[name];
   if(name==='attendance') renderAttendanceForm();
   if(name==='fees') renderFeeStudentOptions();
@@ -1412,6 +1448,7 @@ function showView(name){
   if(name==='qrattendance') renderQrAttendanceView();
   if(name==='timetable') renderTimetableView();
   if(name==='homework') renderHomework();
+  if(name==='workplan') renderWorkPlan();
 }
 
 // ===== STUDENTS =====
@@ -2302,6 +2339,104 @@ function renderHomework(){
       </div>
       ${h.details ? `<div style="font-size:12.5px; margin-top:8px; color:var(--ink);">${h.details}</div>` : ''}
       ${h.fileData ? `<a href="${h.fileData}" download="${h.fileName || 'homework'}" style="display:inline-block; margin-top:8px; font-size:12px; color:var(--navy); font-weight:600;">📎 ${h.fileName || 'Attachment'}</a>` : ''}
+    </div>`).join('');
+}
+
+// ===== WEEKLY WORK PLAN =====
+function populateWorkPlanTeacherSelect(){
+  const sel = document.getElementById('wpTeacher');
+  if(!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = staff.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  if(cur) sel.value = cur;
+}
+function addWorkPlan(){
+  const teacherId = Number(document.getElementById('wpTeacher').value);
+  const cls = document.getElementById('wpClass').value.trim();
+  const weekStart = document.getElementById('wpWeekStart').value;
+  if(!teacherId || !cls || !weekStart){ alert('Teacher, Class aur Week Start Date zaroor bharein.'); return; }
+  const teacher = staff.find(t => t.id === teacherId);
+  const plan = {
+    id: newId(),
+    teacherId, teacherName: teacher ? teacher.name : '',
+    cls, section: document.getElementById('wpSection').value.trim(),
+    subject: document.getElementById('wpSubject').value.trim(),
+    weekStart,
+    days: {
+      Monday: document.getElementById('wpMon').value.trim(),
+      Tuesday: document.getElementById('wpTue').value.trim(),
+      Wednesday: document.getElementById('wpWed').value.trim(),
+      Thursday: document.getElementById('wpThu').value.trim(),
+      Friday: document.getElementById('wpFri').value.trim(),
+      Saturday: document.getElementById('wpSat').value.trim()
+    },
+    notes: document.getElementById('wpNotes').value.trim(),
+    postedAt: new Date().toISOString()
+  };
+  workPlans.push(plan);
+  cloudArrayAdd('workPlans', plan);
+  saveData();
+  ['wpClass','wpSection','wpSubject','wpMon','wpTue','wpWed','wpThu','wpFri','wpSat','wpNotes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('wpWeekStart').value = '';
+  renderWorkPlan();
+}
+function deleteWorkPlan(id){
+  if(session.role !== 'admin'){ alert('Sirf Admin weekly work plan delete kar sakta hai.'); return; }
+  const toRemove = workPlans.find(p => p.id === id);
+  workPlans = workPlans.filter(p => p.id !== id);
+  if(toRemove) cloudArrayRemove('workPlans', toRemove);
+  saveData();
+  renderWorkPlan();
+}
+function shareWorkPlanWhatsApp(id){
+  const p = workPlans.find(x => x.id === id);
+  if(!p) return;
+  const dayLines = Object.entries(p.days).filter(([,v]) => v).map(([d,v]) => `${d}: ${v}`).join('\n');
+  const msg = `🗂️ Weekly Work Plan — Class ${p.cls}${p.section ? '-'+p.section : ''} (${p.subject || 'General'})\nTeacher: ${p.teacherName}\nWeek of: ${p.weekStart}\n${dayLines}${p.notes ? '\nNotes: ' + p.notes : ''}`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+}
+function renderWorkPlan(){
+  populateWorkPlanTeacherSelect();
+  const filterTeacherSel = document.getElementById('wpFilterTeacher');
+  if(filterTeacherSel){
+    const cur = filterTeacherSel.value;
+    filterTeacherSel.innerHTML = '<option value="">Sab Teachers</option>' + staff.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+    filterTeacherSel.value = cur;
+  }
+  const filterClassSel = document.getElementById('wpFilterClass');
+  if(filterClassSel){
+    const classes = [...new Set(students.map(s => s.cls).filter(Boolean))];
+    const cur = filterClassSel.value;
+    filterClassSel.innerHTML = '<option value="">Sab Classes</option>' + classes.map(c => `<option value="${c}">Class ${c}</option>`).join('');
+    filterClassSel.value = cur;
+  }
+  const list = document.getElementById('workPlanList');
+  if(!list) return;
+  const filterTeacher = filterTeacherSel ? filterTeacherSel.value : '';
+  const filterCls = filterClassSel ? filterClassSel.value : '';
+  const canDelete = session && session.role === 'admin';
+  const rows = workPlans.filter(p => (!filterTeacher || p.teacherId === Number(filterTeacher)) && (!filterCls || p.cls === filterCls))
+    .sort((a,b) => new Date(b.weekStart) - new Date(a.weekStart));
+  document.getElementById('workPlanEmpty').style.display = rows.length ? 'none' : 'block';
+  list.innerHTML = rows.map(p => `
+    <div class="panel" style="margin-bottom:12px; padding:14px 16px;">
+      <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <div>
+          <b>Class ${p.cls}${p.section ? '-'+p.section : ''} · ${p.subject || 'General'}</b>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:3px;">Teacher: ${p.teacherName} · Week of: ${p.weekStart}</div>
+        </div>
+        <div style="display:flex; gap:6px; align-items:flex-start;">
+          <button class="btn small" style="background:#25D366; color:#fff;" onclick="shareWorkPlanWhatsApp(${p.id})">WhatsApp</button>
+          ${canDelete ? `<button class="btn small red" onclick="deleteWorkPlan(${p.id})">Delete</button>` : ''}
+        </div>
+      </div>
+      <div class="table-scroll" style="margin-top:10px;">
+        <table>
+          <thead><tr>${Object.keys(p.days).map(d => `<th>${d}</th>`).join('')}</tr></thead>
+          <tbody><tr>${Object.values(p.days).map(v => `<td>${v || '—'}</td>`).join('')}</tr></tbody>
+        </table>
+      </div>
+      ${p.notes ? `<div style="font-size:12.5px; margin-top:8px; color:var(--ink);">📝 ${p.notes}</div>` : ''}
     </div>`).join('');
 }
 
