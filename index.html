@@ -359,6 +359,7 @@
         <li><button data-view="qrattendance" onclick="showView('qrattendance')">🔳 QR Attendance</button></li>
         <li><button data-view="timetable" onclick="showView('timetable')">🗓️ Timetable</button></li>
         <li><button data-view="homework" onclick="showView('homework')">📚 Homework / Assignments</button></li>
+        <li><button data-view="lessonplan" onclick="showView('lessonplan')">📘 Lesson Plan</button></li>
         <li><button data-view="notices" onclick="showView('notices')">📢 Notice Board</button></li>
         <li><button data-view="events" onclick="showView('events')">🎉 Events &amp; Vacations</button></li>
         <li><button data-view="gallery" onclick="showView('gallery')">🖼️ Photo Gallery</button></li>
@@ -433,6 +434,7 @@
               <div class="field"><label>Class</label><input id="stuClass" type="text" placeholder="e.g. 6"></div>
               <div class="field"><label>Section</label><input id="stuSection" type="text" placeholder="e.g. A"></div>
               <div class="field"><label>Roll No.</label><input id="stuRoll" type="text"></div>
+              <div class="field"><label>G.R. No.</label><input id="stuGR" type="text" placeholder="General Register No."></div>
               <div class="field"><label>Contact No.</label><input id="stuContact" type="text"></div>
               <div class="field"><label>Date of Birth</label><input id="stuDOB" type="date"></div>
               <div class="field"><label>Gender</label>
@@ -453,12 +455,12 @@
           <div class="panel">
             <h3>Student List</h3>
             <div class="form-grid" style="margin-bottom:10px;">
-              <div class="field"><label>Search (Name / Adm # / Roll)</label><input id="stuSearch" type="text" placeholder="Type to filter…" oninput="renderStudents()"></div>
+              <div class="field"><label>Search (Name / Adm # / Roll / G.R. #)</label><input id="stuSearch" type="text" placeholder="Type to filter…" oninput="renderStudents()"></div>
               <div class="field"><label>Filter by Class</label><select id="stuSearchClass" onchange="renderStudents()"><option value="">Sab Classes</option></select></div>
             </div>
             <div class="table-scroll">
             <table>
-              <thead><tr><th>Adm #</th><th>Name</th><th>Father Name</th><th>Class</th><th>Sec</th><th>Roll</th><th>Contact</th><th></th></tr></thead>
+              <thead><tr><th>Adm #</th><th>G.R. #</th><th>Name</th><th>Father Name</th><th>Class</th><th>Sec</th><th>Roll</th><th>Contact</th><th></th></tr></thead>
               <tbody id="studentTable"></tbody>
             </table>
             </div>
@@ -657,6 +659,39 @@
             </div>
             <div id="homeworkList"></div>
             <div class="empty" id="homeworkEmpty">Koi homework post nahi hua.</div>
+          </div>
+        </div>
+
+        <!-- LESSON PLAN (TEACHERS) -->
+        <div class="view" id="view-lessonplan">
+          <div class="panel">
+            <h3>Add Lesson Plan</h3>
+            <div class="form-grid">
+              <div class="field"><label>Teacher</label><select id="lpTeacher"></select></div>
+              <div class="field"><label>Class</label><input id="lpClass" type="text" placeholder="e.g. 6"></div>
+              <div class="field"><label>Section</label><input id="lpSection" type="text" placeholder="e.g. A"></div>
+              <div class="field"><label>Subject</label><input id="lpSubject" type="text" placeholder="e.g. Science"></div>
+              <div class="field"><label>Date</label><input id="lpDate" type="date"></div>
+              <div class="field"><label>Period / Duration</label><input id="lpPeriod" type="text" placeholder="e.g. 40 min"></div>
+              <div class="field" style="grid-column:1/-1;"><label>Topic</label><input id="lpTopic" type="text" placeholder="e.g. Photosynthesis"></div>
+              <div class="field" style="grid-column:1/-1;"><label>Learning Objectives</label><input id="lpObjectives" type="text"></div>
+              <div class="field" style="grid-column:1/-1;"><label>Teaching Method / Activities</label><input id="lpMethod" type="text"></div>
+              <div class="field" style="grid-column:1/-1;"><label>Resources / Notes</label><input id="lpNotes" type="text"></div>
+              <div class="field" style="grid-column:1/-1;"><label>Attach File / Image (optional)</label><input id="lpFile" type="file" accept="image/*,.pdf"></div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <button class="btn green" id="lpSubmitBtn" onclick="addLessonPlan()">+ Save Lesson Plan</button>
+              <button class="btn" id="lpCancelBtn" style="display:none; background:var(--muted);" onclick="cancelEditLessonPlan()">Cancel Edit</button>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>All Lesson Plans</h3>
+            <div class="form-grid" style="margin-bottom:10px;">
+              <div class="field"><label>Filter by Teacher</label><select id="lpFilterTeacher" onchange="renderLessonPlans()"><option value="">Sab Teachers</option></select></div>
+              <div class="field"><label>Filter by Class</label><select id="lpFilterClass" onchange="renderLessonPlans()"><option value="">Sab Classes</option></select></div>
+            </div>
+            <div id="lessonPlanList"></div>
+            <div class="empty" id="lessonPlanEmpty">Abhi tak koi lesson plan add nahi hua.</div>
           </div>
         </div>
 
@@ -933,6 +968,7 @@ let galleryPhotos = [];
 let examResults = [];
 let timetable = [];
 let homework = [];
+let lessonPlans = [];
 let qrScanLog = [];
 let waSettings = { enabled:false, times:['08:00','11:00','13:30','16:30'], groupLink:'', lastSent:{} };
 let quoteLog = [];
@@ -945,7 +981,7 @@ function saveData(){
   // par POORI list ke tor par NAHI bheje jaate — un sab ke apne add/delete functions seedha
   // cloudArrayAdd()/cloudArrayRemove() use karte hain, taake ek device ki nayi entry doosre device
   // ki entry ko cloud par overwrite na kar de. Yahan sirf localStorage ke liye poora data rakha hai.
-  const data = { students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, qrScanLog, savedAt: new Date().toISOString() };
+  const data = { students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, lessonPlans, qrScanLog, savedAt: new Date().toISOString() };
   const s = document.getElementById('saveStatus');
   try{
     const full = Object.assign({}, data, { galleryPhotos });
@@ -1016,6 +1052,7 @@ function applyData(data){
   quoteLog = data.quoteLog || [];
   timetable = data.timetable || [];
   homework = data.homework || [];
+  lessonPlans = data.lessonPlans || [];
   qrScanLog = data.qrScanLog || [];
 }
 function loadData(){
@@ -1041,7 +1078,7 @@ function loadData(){
     console.warn('Gallery cloud se load nahi ho saki.', err);
   }) : Promise.resolve();
   return Promise.all([corePromise, galleryPromise]).then(()=>{
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.assign({}, { students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, qrScanLog }, { galleryPhotos }))); }catch(e){}
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.assign({}, { students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, lessonPlans, qrScanLog }, { galleryPhotos }))); }catch(e){}
   });
 }
 
@@ -1355,7 +1392,7 @@ function showView(name){
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   document.querySelectorAll('.nav-list button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
-  const titles = {dashboard:'Dashboard', students:'Student Management', staff:'Teachers & Staff', fees:'Fees & Challan', attendance:'Attendance', qrattendance:'QR Code Attendance', timetable:'Timetable', homework:'Homework / Assignments', notices:'Notice Board', events:'Events & Vacations', gallery:'Photo Gallery', results:'Results / Exam Reports', quotes:'WhatsApp Awareness', reports:'Reports', settings:'Settings & Backup', loginlog:'Login Activity'};
+  const titles = {dashboard:'Dashboard', students:'Student Management', staff:'Teachers & Staff', fees:'Fees & Challan', attendance:'Attendance', qrattendance:'QR Code Attendance', timetable:'Timetable', homework:'Homework / Assignments', lessonplan:'Lesson Plan', notices:'Notice Board', events:'Events & Vacations', gallery:'Photo Gallery', results:'Results / Exam Reports', quotes:'WhatsApp Awareness', reports:'Reports', settings:'Settings & Backup', loginlog:'Login Activity'};
   document.getElementById('viewTitle').textContent = titles[name];
   if(name==='attendance') renderAttendanceForm();
   if(name==='fees') renderFeeStudentOptions();
@@ -1367,6 +1404,7 @@ function showView(name){
   if(name==='qrattendance') renderQrAttendanceView();
   if(name==='timetable') renderTimetableView();
   if(name==='homework') renderHomework();
+  if(name==='lessonplan') renderLessonPlans();
 }
 
 /* ===================== STUDENTS ===================== */
@@ -1383,6 +1421,7 @@ function addStudent(){
     s.cls = document.getElementById('stuClass').value.trim();
     s.section = document.getElementById('stuSection').value.trim();
     s.roll = document.getElementById('stuRoll').value.trim();
+    s.gr = document.getElementById('stuGR').value.trim();
     s.contact = document.getElementById('stuContact').value.trim();
     s.dob = document.getElementById('stuDOB').value;
     s.gender = document.getElementById('stuGender').value;
@@ -1403,6 +1442,7 @@ function addStudent(){
     cls: document.getElementById('stuClass').value.trim(),
     section: document.getElementById('stuSection').value.trim(),
     roll: document.getElementById('stuRoll').value.trim(),
+    gr: document.getElementById('stuGR').value.trim(),
     contact: document.getElementById('stuContact').value.trim(),
     dob: document.getElementById('stuDOB').value,
     gender: document.getElementById('stuGender').value,
@@ -1411,7 +1451,7 @@ function addStudent(){
   };
   students.push(newStudent);
   cloudArrayAdd('students', newStudent);
-  ['stuName','stuFather','stuClass','stuSection','stuRoll','stuContact','stuDOB','stuAddress'].forEach(id => document.getElementById(id).value = '');
+  ['stuName','stuFather','stuClass','stuSection','stuRoll','stuGR','stuContact','stuDOB','stuAddress'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('stuAdmDate').value = new Date().toISOString().slice(0,10);
   renderAll();
 }
@@ -1424,6 +1464,7 @@ function editStudent(id){
   document.getElementById('stuClass').value = s.cls || '';
   document.getElementById('stuSection').value = s.section || '';
   document.getElementById('stuRoll').value = s.roll || '';
+  document.getElementById('stuGR').value = s.gr || '';
   document.getElementById('stuContact').value = s.contact || '';
   document.getElementById('stuDOB').value = s.dob || '';
   document.getElementById('stuGender').value = s.gender || 'Male';
@@ -1437,7 +1478,7 @@ function editStudent(id){
 }
 function cancelEditStudent(){
   editingStudentId = null;
-  ['stuName','stuFather','stuClass','stuSection','stuRoll','stuContact','stuDOB','stuAddress'].forEach(id => document.getElementById(id).value = '');
+  ['stuName','stuFather','stuClass','stuSection','stuRoll','stuGR','stuContact','stuDOB','stuAddress'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('stuAdmDate').value = new Date().toISOString().slice(0,10);
   document.getElementById('stuFormTitle').textContent = 'New Admission / Student Entry';
   document.getElementById('stuSubmitBtn').textContent = '+ Add Student';
@@ -1470,12 +1511,12 @@ function renderStudents(){
   const filtered = students.filter(s => {
     if(clsFilter && s.cls !== clsFilter) return false;
     if(!q) return true;
-    return (s.name||'').toLowerCase().includes(q) || (s.adm||'').toLowerCase().includes(q) || (s.roll||'').toLowerCase().includes(q);
+    return (s.name||'').toLowerCase().includes(q) || (s.adm||'').toLowerCase().includes(q) || (s.roll||'').toLowerCase().includes(q) || (s.gr||'').toLowerCase().includes(q);
   });
   document.getElementById('studentEmpty').style.display = filtered.length ? 'none' : 'block';
   filtered.forEach(s => {
     const canDelete = session && session.role === 'admin';
-    tbody.innerHTML += `<tr><td>${s.adm}</td><td>${s.name}</td><td>${s.father||'—'}</td><td>${s.cls||'—'}</td><td>${s.section||'—'}</td><td>${s.roll||'—'}</td><td>${s.contact||'—'}</td><td style="display:flex; gap:6px; flex-wrap:wrap;">
+    tbody.innerHTML += `<tr><td>${s.adm}</td><td>${s.gr||'—'}</td><td>${s.name}</td><td>${s.father||'—'}</td><td>${s.cls||'—'}</td><td>${s.section||'—'}</td><td>${s.roll||'—'}</td><td>${s.contact||'—'}</td><td style="display:flex; gap:6px; flex-wrap:wrap;">
       <button class="btn small" style="background:var(--navy);" onclick="editStudent(${s.id})">✏️ Edit</button>
       <button class="btn small gold" onclick="printAdmissionForm(${s.id})">🖨️ Form</button>
       <button class="btn small" style="background:#5b4636; color:#fff;" onclick="printIdCard(${s.id})">🪪 ID Card</button>
@@ -1799,6 +1840,7 @@ function admissionFormHTML(s){
       </div>
       <div class="adm-grid">
         <div class="adm-row"><span class="k">Admission No.</span><span class="v">${s.adm}</span></div>
+        <div class="adm-row"><span class="k">G.R. No.</span><span class="v">${s.gr || '—'}</span></div>
         <div class="adm-row"><span class="k">Date of Admission</span><span class="v">${s.admDate || '—'}</span></div>
         <div class="adm-row full"><span class="k">Student Name</span><span class="v">${s.name}</span></div>
         <div class="adm-row full"><span class="k">Father Name</span><span class="v">${s.father || '—'}</span></div>
@@ -2268,6 +2310,146 @@ function renderHomework(){
       </div>
       ${h.details ? `<div style="font-size:12.5px; margin-top:8px; color:var(--ink);">${h.details}</div>` : ''}
       ${h.fileData ? `<a href="${h.fileData}" download="${h.fileName || 'homework'}" style="display:inline-block; margin-top:8px; font-size:12px; color:var(--navy); font-weight:600;">📎 ${h.fileName || 'Attachment'}</a>` : ''}
+    </div>`).join('');
+}
+
+/* ===================== LESSON PLAN (TEACHERS) ===================== */
+let editingLessonPlanId = null;
+function populateLessonPlanTeacherSelect(){
+  const sel = document.getElementById('lpTeacher');
+  if(sel){
+    const cur = sel.value;
+    sel.innerHTML = staff.map(t => `<option value="${t.id}">${t.name}</option>`).join('') || '<option value="">— Pehle Teacher add karein —</option>';
+    if(staff.some(t => String(t.id) === cur)) sel.value = cur;
+  }
+  const fsel = document.getElementById('lpFilterTeacher');
+  if(fsel){
+    const cur = fsel.value;
+    fsel.innerHTML = '<option value="">Sab Teachers</option>' + staff.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+    if(staff.some(t => String(t.id) === cur)) fsel.value = cur;
+  }
+}
+function addLessonPlan(){
+  const teacherId = document.getElementById('lpTeacher').value;
+  const cls = document.getElementById('lpClass').value.trim();
+  const topic = document.getElementById('lpTopic').value.trim();
+  if(!teacherId){ alert('Teacher select karein.'); return; }
+  if(!cls || !topic){ alert('Class aur Topic zaroor bharein.'); return; }
+  const fileInput = document.getElementById('lpFile');
+  const file = fileInput.files[0];
+  const teacher = staff.find(t => String(t.id) === String(teacherId));
+  const finish = (fileData) => {
+    const base = {
+      teacherId, teacherName: teacher ? teacher.name : '—',
+      cls, section: document.getElementById('lpSection').value.trim(),
+      subject: document.getElementById('lpSubject').value.trim(),
+      date: document.getElementById('lpDate').value,
+      period: document.getElementById('lpPeriod').value.trim(),
+      topic,
+      objectives: document.getElementById('lpObjectives').value.trim(),
+      method: document.getElementById('lpMethod').value.trim(),
+      notes: document.getElementById('lpNotes').value.trim()
+    };
+    if(editingLessonPlanId !== null){
+      const lp = lessonPlans.find(x => x.id === editingLessonPlanId);
+      if(lp){
+        const oldLp = Object.assign({}, lp);
+        Object.assign(lp, base);
+        if(fileData){ lp.fileData = fileData; lp.fileName = file.name; }
+        cloudArrayRemove('lessonPlans', oldLp);
+        cloudArrayAdd('lessonPlans', Object.assign({}, lp));
+      }
+      cancelEditLessonPlan();
+    } else {
+      const lp = Object.assign({ id:newId(), fileData: fileData || null, fileName: file ? file.name : null, postedAt: new Date().toISOString() }, base);
+      lessonPlans.push(lp);
+      cloudArrayAdd('lessonPlans', lp);
+      ['lpClass','lpSection','lpSubject','lpPeriod','lpTopic','lpObjectives','lpMethod','lpNotes'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('lpDate').value = '';
+    }
+    fileInput.value = '';
+    saveData();
+    renderLessonPlans();
+  };
+  if(file && file.size < 1500000){
+    const reader = new FileReader();
+    reader.onload = e => finish(e.target.result);
+    reader.readAsDataURL(file);
+  } else {
+    if(file) alert('File 1.5MB se choti honi chahiye — lesson plan file ke bagair save ho raha hai.');
+    finish(null);
+  }
+}
+function editLessonPlan(id){
+  const lp = lessonPlans.find(x => x.id === id);
+  if(!lp) return;
+  editingLessonPlanId = id;
+  document.getElementById('lpTeacher').value = lp.teacherId || '';
+  document.getElementById('lpClass').value = lp.cls || '';
+  document.getElementById('lpSection').value = lp.section || '';
+  document.getElementById('lpSubject').value = lp.subject || '';
+  document.getElementById('lpDate').value = lp.date || '';
+  document.getElementById('lpPeriod').value = lp.period || '';
+  document.getElementById('lpTopic').value = lp.topic || '';
+  document.getElementById('lpObjectives').value = lp.objectives || '';
+  document.getElementById('lpMethod').value = lp.method || '';
+  document.getElementById('lpNotes').value = lp.notes || '';
+  document.getElementById('lpSubmitBtn').textContent = '✔ Update Lesson Plan';
+  document.getElementById('lpCancelBtn').style.display = 'inline-block';
+  showView('lessonplan');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+function cancelEditLessonPlan(){
+  editingLessonPlanId = null;
+  ['lpClass','lpSection','lpSubject','lpPeriod','lpTopic','lpObjectives','lpMethod','lpNotes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('lpDate').value = '';
+  const fileInput = document.getElementById('lpFile');
+  if(fileInput) fileInput.value = '';
+  document.getElementById('lpSubmitBtn').textContent = '+ Save Lesson Plan';
+  document.getElementById('lpCancelBtn').style.display = 'none';
+}
+function deleteLessonPlan(id){
+  if(session.role !== 'admin'){ alert('Sirf Admin lesson plan delete kar sakta hai.'); return; }
+  const toRemove = lessonPlans.find(x => x.id === id);
+  lessonPlans = lessonPlans.filter(x => x.id !== id);
+  if(toRemove) cloudArrayRemove('lessonPlans', toRemove);
+  if(editingLessonPlanId === id) cancelEditLessonPlan();
+  saveData();
+  renderLessonPlans();
+}
+function renderLessonPlans(){
+  populateLessonPlanTeacherSelect();
+  const filterClsSel = document.getElementById('lpFilterClass');
+  if(filterClsSel){
+    const classes = [...new Set(students.map(s => s.cls).filter(Boolean))];
+    const cur = filterClsSel.value;
+    filterClsSel.innerHTML = '<option value="">Sab Classes</option>' + classes.map(c => `<option value="${c}">Class ${c}</option>`).join('');
+    filterClsSel.value = cur;
+  }
+  const list = document.getElementById('lessonPlanList');
+  if(!list) return;
+  const filterTeacher = document.getElementById('lpFilterTeacher') ? document.getElementById('lpFilterTeacher').value : '';
+  const filterCls = filterClsSel ? filterClsSel.value : '';
+  const canManage = session && session.role === 'admin';
+  const rows = lessonPlans.filter(lp => (!filterTeacher || String(lp.teacherId) === String(filterTeacher)) && (!filterCls || lp.cls === filterCls))
+    .sort((a,b) => new Date(b.date || b.postedAt) - new Date(a.date || a.postedAt));
+  document.getElementById('lessonPlanEmpty').style.display = rows.length ? 'none' : 'block';
+  list.innerHTML = rows.map(lp => `
+    <div class="panel" style="margin-bottom:12px; padding:14px 16px;">
+      <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <div>
+          <b>${lp.topic}</b>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:3px;">Class ${lp.cls}${lp.section ? '-'+lp.section : ''} · ${lp.subject || 'General'} · Teacher: ${lp.teacherName || '—'} · Date: ${lp.date || '—'}${lp.period ? ' · '+lp.period : ''}</div>
+        </div>
+        <div style="display:flex; gap:6px; align-items:flex-start;">
+          <button class="btn small" style="background:var(--navy);" onclick="editLessonPlan(${lp.id})">✏️ Edit</button>
+          ${canManage ? `<button class="btn small red" onclick="deleteLessonPlan(${lp.id})">Delete</button>` : ''}
+        </div>
+      </div>
+      ${lp.objectives ? `<div style="font-size:12.5px; margin-top:8px;"><b>Objectives:</b> ${lp.objectives}</div>` : ''}
+      ${lp.method ? `<div style="font-size:12.5px; margin-top:4px;"><b>Method / Activities:</b> ${lp.method}</div>` : ''}
+      ${lp.notes ? `<div style="font-size:12.5px; margin-top:4px;"><b>Notes:</b> ${lp.notes}</div>` : ''}
+      ${lp.fileData ? `<a href="${lp.fileData}" download="${lp.fileName || 'lesson-plan'}" style="display:inline-block; margin-top:8px; font-size:12px; color:var(--navy); font-weight:600;">📎 ${lp.fileName || 'Attachment'}</a>` : ''}
     </div>`).join('');
 }
 
