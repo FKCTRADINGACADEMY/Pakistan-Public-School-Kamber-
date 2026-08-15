@@ -967,13 +967,28 @@ function saveData(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }catch(e){ if(s) s.textContent = 'Save failed — storage full/blocked'; return; }
   if(SCHOOL_DOC){
+    // IMPORTANT: students/staff/fees/notices/loginLog/events/examResults/quoteLog/
+    // timetable/homework/workPlans/qrScanLog already sync item-by-item (safe,
+    // non-destructive arrayUnion/arrayRemove) via cloudArrayAdd/cloudArrayRemove
+    // at the exact point each entry is added/removed. They are deliberately
+    // NOT re-sent here as full arrays — doing so would overwrite (and could
+    // erase) entries that other devices added while this device was offline.
+    // Only small scalar/settings fields are safe to sync as a full overwrite.
+    const scalarData = { idCounter, schoolSettings, waSettings, savedAt: data.savedAt };
     if(s) s.textContent = navigator.onLine ? 'Cloud pe sync ho raha hai…' : 'Offline — local save, net aane par cloud sync hoga';
-    SCHOOL_DOC.set(data, { merge:true })
+    SCHOOL_DOC.set(scalarData, { merge:true })
       .then(()=>{ if(s) s.textContent = '☁️ Cloud synced · ' + new Date().toLocaleTimeString(); })
       .catch(err=>{ if(s) s.textContent = 'Local mein save · cloud baad mein sync hoga'; });
   } else {
     if(s) s.textContent = 'Saved locally · ' + new Date().toLocaleTimeString();
   }
+}
+function cloudSetAttendance(date, studentId, status){
+  if(!SCHOOL_DOC) return;
+  // Deep-merge just this one date+student cell so other devices' attendance
+  // entries for the same day (or other days) are never overwritten.
+  SCHOOL_DOC.set({ attendanceRecords: { [date]: { [String(studentId)]: status } } }, { merge: true })
+    .catch(err => console.warn('Cloud attendance sync failed:', err));
 }
 function saveGalleryData(){
   try{
@@ -2119,6 +2134,7 @@ function setAttStatus(studentId, status){
   if(!attendanceRecords[date]) attendanceRecords[date] = {};
   attendanceRecords[date][studentId] = status;
   saveData();
+  cloudSetAttendance(date, studentId, status);
   renderAttendanceForm();
 }
 function sendAbsentWhatsApp(studentId){
@@ -2194,7 +2210,10 @@ function onQrScanSuccess(decodedText){
   }
   if(!attendanceRecords[date]) attendanceRecords[date] = {};
   attendanceRecords[date][s.id] = 'present';
-  qrScanLog.push({ id:newId(), date, time:new Date().toLocaleTimeString(), adm:s.adm, name:s.name, cls:s.cls, studentId:s.id });
+  cloudSetAttendance(date, s.id, 'present');
+  const scanEntry = { id:newId(), date, time:new Date().toLocaleTimeString(), adm:s.adm, name:s.name, cls:s.cls, studentId:s.id };
+  qrScanLog.push(scanEntry);
+  cloudArrayAdd('qrScanLog', scanEntry);
   saveData();
   resultBox.innerHTML = `<div style="padding:10px 14px; background:#e2f5e7; border-left:4px solid var(--green); border-radius:10px; font-size:13px;">✅ ${s.name} (${s.adm}) — Present mark ho gaya (${date})</div>`;
   renderQrScanLog();
