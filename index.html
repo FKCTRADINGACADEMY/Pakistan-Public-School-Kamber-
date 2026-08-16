@@ -978,7 +978,7 @@ function saveData(){
     if(s) s.textContent = navigator.onLine ? 'Cloud pe sync ho raha hai…' : 'Offline — local save, net aane par cloud sync hoga';
     SCHOOL_DOC.set(scalarData, { merge:true })
       .then(()=>{ if(s) s.textContent = '☁️ Cloud synced · ' + new Date().toLocaleTimeString(); })
-      .catch(err=>{ if(s) s.textContent = 'Local mein save · cloud baad mein sync hoga'; });
+      .catch(err=>{ if(s) s.textContent = cloudSyncFailMessage(err); console.warn('Cloud save failed:', err); });
   } else {
     if(s) s.textContent = 'Saved locally · ' + new Date().toLocaleTimeString();
   }
@@ -988,7 +988,11 @@ function cloudSetAttendance(date, studentId, status){
   // Deep-merge just this one date+student cell so other devices' attendance
   // entries for the same day (or other days) are never overwritten.
   SCHOOL_DOC.set({ attendanceRecords: { [date]: { [String(studentId)]: status } } }, { merge: true })
-    .catch(err => console.warn('Cloud attendance sync failed:', err));
+    .catch(err => {
+      console.warn('Cloud attendance sync failed:', err);
+      const s = document.getElementById('saveStatus');
+      if(s) s.textContent = cloudSyncFailMessage(err);
+    });
 }
 function saveGalleryData(){
   try{
@@ -1003,13 +1007,36 @@ function nextStaffCode(){
   const used = staff.map(s => s.staffCode).filter(Boolean);
   return used.length ? Math.max(...used) + 1 : 1001;
 }
+// Turns a Firestore error into a message that actually tells us WHY sync
+// failed, instead of always showing the same generic "local save" text.
+// permission-denied almost always means: this device/tab has no valid
+// Firebase Auth session (anonymous auth disabled, or offline-cached admin
+// login never re-authenticated with Firebase) — so the Firestore security
+// rules are rejecting the write. That looks identical to "offline" in the
+// UI unless we check err.code specifically.
+function cloudSyncFailMessage(err){
+  const s = document.getElementById('saveStatus');
+  if(err && err.code === 'permission-denied'){
+    const msg = '⚠️ Cloud sync BLOCKED (permission-denied) — is device ka Firebase login/auth invalid hai. Admin: Firebase Console → Authentication mein "Anonymous" sign-in enable karein, ya Firestore Rules check karein.';
+    console.error('FIRESTORE PERMISSION DENIED — this device is not authenticated. Fix: enable Anonymous auth in Firebase Console (Authentication > Sign-in method) and/or review Firestore security rules.', err);
+    return msg;
+  }
+  if(err && (err.code === 'unavailable' || !navigator.onLine)){
+    return 'Offline — local save, net aane par cloud sync hoga';
+  }
+  return 'Local mein save · cloud baad mein sync hoga (' + (err && err.code ? err.code : 'unknown error') + ')';
+}
 function cloudArrayAdd(field, item, docRef){
   docRef = docRef || SCHOOL_DOC;
   queuePendingSync(field, 'add', item);
   if(!docRef) return;
   docRef.set({ [field]: firebase.firestore.FieldValue.arrayUnion(item) }, { merge:true })
     .then(()=> removePendingSync(field, 'add', item))
-    .catch(err => console.warn('Cloud add failed for ' + field + ':', err));
+    .catch(err => {
+      console.warn('Cloud add failed for ' + field + ':', err);
+      const s = document.getElementById('saveStatus');
+      if(s) s.textContent = cloudSyncFailMessage(err);
+    });
 }
 function cloudArrayRemove(field, item, docRef){
   docRef = docRef || SCHOOL_DOC;
@@ -1017,7 +1044,11 @@ function cloudArrayRemove(field, item, docRef){
   if(!docRef) return;
   docRef.set({ [field]: firebase.firestore.FieldValue.arrayRemove(item) }, { merge:true })
     .then(()=> removePendingSync(field, 'remove', item))
-    .catch(err => console.warn('Cloud remove failed for ' + field + ':', err));
+    .catch(err => {
+      console.warn('Cloud remove failed for ' + field + ':', err);
+      const s = document.getElementById('saveStatus');
+      if(s) s.textContent = cloudSyncFailMessage(err);
+    });
 }
 
 // ===== PENDING SYNC QUEUE =====
@@ -1344,10 +1375,28 @@ function doLogin(){
         return;
       }
       currentRole = 'user';
-      if(auth && auth.signInAnonymously){ auth.signInAnonymously().catch(()=>{}); }
-      enterApp(match.name);
-      btn.disabled = false;
-      btn.textContent = originalText;
+      const proceed = () => {
+        enterApp(match.name);
+        btn.disabled = false;
+        btn.textContent = originalText;
+      };
+      if(auth && auth.signInAnonymously && !auth.currentUser){
+        auth.signInAnonymously()
+          .then(proceed)
+          .catch(err=>{
+            // Do NOT silently continue — this is exactly why cloud sync
+            // silently fails on staff devices: no Firebase Auth session
+            // means every Firestore write gets rejected by security rules.
+            console.error('Anonymous sign-in failed — this device will NOT be able to sync to cloud until fixed. Enable "Anonymous" provider in Firebase Console > Authentication > Sign-in method.', err);
+            proceed();
+            setTimeout(()=>{
+              const s = document.getElementById('saveStatus');
+              if(s) s.textContent = '⚠️ Is device par cloud login fail hua — data sirf local save hoga jab tak admin Firebase Anonymous auth enable na kare.';
+            }, 500);
+          });
+      } else {
+        proceed();
+      }
     });
     return;
   }
@@ -3075,7 +3124,16 @@ if(auth){
 window.addEventListener('online', ()=>{
   const s = document.getElementById('saveStatus');
   if(s) s.textContent = 'Online ho gaye — sync ho raha hai…';
+  // If this device somehow lost/never had a Firebase Auth session (common
+  // for staff devices when anonymous auth silently failed earlier, or for
+  // admin devices that logged in offline via cached password hash), retry
+  // writes will just fail with permission-denied again. Re-authenticate
+  // anonymously first (best effort) so pending syncs actually go through.
+  if(auth && !auth.currentUser && auth.signInAnonymously){
+    auth.signInAnonymously().catch(err=>console.warn('Reconnect anonymous auth failed:', err));
+  }
   if(SCHOOL_DOC) saveData();
+  reapplyPendingSync();
 });
 window.addEventListener('offline', ()=>{
   const s = document.getElementById('saveStatus');
