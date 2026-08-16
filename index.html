@@ -3064,6 +3064,17 @@ document.querySelectorAll('table').forEach(tbl=>{
 })();
 
 // ===== REALTIME CLOUD SYNC =====
+// NOTE: onSnapshot fires very often — every time ANY staff device writes
+// anything (a single fee entry, one attendance cell, etc.), Firestore sends
+// an update to every other open device. Previously each of those events
+// triggered an immediate full renderOnly() (rebuilds every table/list on
+// the page) PLUS a full localStorage write — synchronously, on the main
+// thread. With several staff active together this could fire many times
+// per second and made the app freeze/"hang" right after syncing. We now
+// debounce: rapid bursts of snapshot events are collapsed into a single
+// render ~400ms after things go quiet, so the UI only redraws once.
+let _schoolSnapDebounce = null;
+let _gallerySnapDebounce = null;
 if(SCHOOL_DOC){
   SCHOOL_DOC.onSnapshot({ includeMetadataChanges: true }, function(doc){
     if(!doc.exists) return;
@@ -3074,9 +3085,10 @@ if(SCHOOL_DOC){
       const merged = Object.assign({}, raw ? JSON.parse(raw) : {}, doc.data());
       localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
     }catch(e){}
-    renderOnly();
     const s = document.getElementById('saveStatus');
     if(s) s.textContent = '☁️ Realtime update mila · ' + new Date().toLocaleTimeString();
+    clearTimeout(_schoolSnapDebounce);
+    _schoolSnapDebounce = setTimeout(renderOnly, 400);
   }, function(err){ console.warn('Realtime sync error:', err); });
 }
 if(SCHOOL_GALLERY_DOC){
@@ -3090,9 +3102,10 @@ if(SCHOOL_GALLERY_DOC){
         const merged = Object.assign({}, raw ? JSON.parse(raw) : {}, { galleryPhotos });
         localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
       }catch(e){}
-      renderGallery();
       const s = document.getElementById('saveStatus');
       if(s) s.textContent = '☁️ Gallery realtime update mila · ' + new Date().toLocaleTimeString();
+      clearTimeout(_gallerySnapDebounce);
+      _gallerySnapDebounce = setTimeout(renderGallery, 400);
     }
   }, function(err){ console.warn('Gallery realtime sync error:', err); });
 }
@@ -3148,10 +3161,18 @@ window.addEventListener('offline', ()=>{
       .then(function(reg) {
         console.log('✅ Service Worker registered successfully:', reg);
 
-        // Har 5 second mein check karo koi naya version aaya hai ya nahi
+        // Pehle har 5 second mein version check hota tha — is se app hamesha
+        // background mein network hit karti rehti thi (har staff device par),
+        // jo slow/mobile net par UI ko baar-baar rok (hang) deta tha. Ab check
+        // kam frequent hai (har 5 minute) aur jab user tab par wapis aaye
+        // (visibilitychange) tab bhi ek dafa check ho jata hai — isse update
+        // utni hi jaldi mil jata hai bina app ko baar-baar disturb kiye.
         setInterval(function() {
           reg.update();
-        }, 5000);
+        }, 300000);
+        document.addEventListener('visibilitychange', function(){
+          if(document.visibilityState === 'visible') reg.update();
+        });
 
         // Naya version mil jaye to usay turant activate karne ko kaho
         reg.addEventListener('updatefound', function() {
