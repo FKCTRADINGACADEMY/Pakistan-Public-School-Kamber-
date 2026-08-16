@@ -1,5 +1,5 @@
 // Service Worker for Pakistan Public School Kamber — PWA
-const CACHE_NAME = 'pps-kamber-v9';
+const CACHE_NAME = 'pps-kamber-v10';
 
 // Local (same-origin) core assets — cors mode, addAll works fine.
 // IMPORTANT: every path here MUST exist at the site root exactly as
@@ -9,15 +9,48 @@ const CACHE_NAME = 'pps-kamber-v9';
 // had nothing to fall back to). Confirmed against the actual repo file
 // listing: icon-192x192.png and icon-512x512.png sit flat at the root
 // (no icons/ subfolder) — matched below.
+// offline.html is intentionally NOT listed here anymore — its content is
+// now inlined directly below (OFFLINE_FALLBACK_HTML) so the "first-load,
+// no-internet-ever" screen can never break just because one more file
+// failed to cache; one less moving part, one less thing that can 404.
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon-192x192.png',
   './icon-512x512.png',
-  './app-logo.png',
-  './offline.html'
+  './app-logo.png'
 ];
+
+const OFFLINE_FALLBACK_HTML = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pakistan Public School Kamber — Offline</title>
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0; min-height:100vh; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+    font-family:-apple-system, Roboto, Segoe UI, Arial, sans-serif;
+    background:#F7F5EF; color:#1E2A24; padding:32px 24px;}
+  img{width:110px; height:110px; margin-bottom:22px;}
+  h1{font-size:20px; margin:0 0 10px; color:#0E6B4C;}
+  p{font-size:14.5px; line-height:1.6; color:#4B5563; max-width:320px; margin:0 0 22px;}
+  button{background:#0E6B4C; color:#fff; border:none; border-radius:10px;
+    padding:12px 26px; font-size:15px; font-weight:600; cursor:pointer;}
+  button:active{opacity:0.85;}
+  .hint{margin-top:18px; font-size:12px; color:#8892AC;}
+</style></head>
+<body>
+  <img src="./icon-192x192.png" alt="Pakistan Public School Kamber">
+  <h1>Internet Connect Karein</h1>
+  <p>Ye app pehli baar kholne ke liye internet zaroori hai. Internet connect karein aur dobara try karein — uske baad app offline bhi chalti rahegi.</p>
+  <button onclick="window.location.reload()">Dobara Try Karein</button>
+  <div class="hint">Pakistan Public School Kamber — Management System</div>
+</body></html>`;
+
+function offlineFallbackResponse(){
+  return new Response(OFFLINE_FALLBACK_HTML, { status: 200, headers: { 'Content-Type': 'text/html' } });
+}
 
 // Cross-origin CDN scripts your app depends on (Firebase + QR libs).
 // <script src="..."> tags request these as "no-cors", so the SW sees
@@ -77,10 +110,7 @@ self.addEventListener('activate', (event) => {
 });
 
 function noCacheFallback() {
-  return new Response(
-    '<h1>Internet Connect Karein</h1><p>Ye app pehli baar kholne ke liye internet zaroori hai.</p>',
-    { status: 200, headers: { 'Content-Type': 'text/html' } }
-  );
+  return offlineFallbackResponse();
 }
 
 // Network-first for the app page, with a short timeout so a dead/very
@@ -93,8 +123,7 @@ function navigateWithTimeout(req, timeoutMs = 3000) {
     const useCache = async () => {
       const cachedPage = await caches.match('./index.html');
       if (cachedPage) return cachedPage;
-      const offline = await caches.match('./offline.html');
-      return offline || noCacheFallback();
+      return offlineFallbackResponse();
     };
 
     const timer = setTimeout(async () => {

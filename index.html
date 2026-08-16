@@ -1111,6 +1111,21 @@ function applyData(data){
   if(data.qrScanLog) qrScanLog = data.qrScanLog;
   if(data.galleryPhotos) galleryPhotos = data.galleryPhotos;
 }
+// Resolves with the wrapped promise's result, OR after ms milliseconds —
+// whichever comes first. The original promise is NOT cancelled/aborted;
+// it keeps running in the background and its own .then/.catch handlers
+// (attached before the race) still fire normally whenever it eventually
+// settles. Used below so a slow/dead cloud connection can never freeze
+// the UI indefinitely — the app just falls back to local data quickly
+// and updates itself later once the cloud response actually arrives.
+function withTimeout(promise, ms){
+  return new Promise(resolve => {
+    let done = false;
+    const timer = setTimeout(()=>{ if(!done){ done = true; resolve(); } }, ms);
+    promise.then(()=>{ if(!done){ done = true; clearTimeout(timer); resolve(); } })
+           .catch(()=>{ if(!done){ done = true; clearTimeout(timer); resolve(); } });
+  });
+}
 function loadData(){
   const raw = localStorage.getItem(STORAGE_KEY);
   if(raw){
@@ -1121,13 +1136,24 @@ function loadData(){
     if(doc.exists){ applyData(doc.data()); }
     else { saveData(); }
     reapplyPendingSync();
+    renderOnly();
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, workPlans, qrScanLog, galleryPhotos })); }catch(e){}
   }).catch(err=>{ console.warn('Cloud se data load nahi ho saka', err); });
   const galleryPromise = SCHOOL_GALLERY_DOC ? SCHOOL_GALLERY_DOC.get({source:'server'}).catch(()=>SCHOOL_GALLERY_DOC.get()).then(doc=>{
-    if(doc.exists && doc.data().galleryPhotos){ galleryPhotos = doc.data().galleryPhotos; }
+    if(doc.exists && doc.data().galleryPhotos){
+      galleryPhotos = doc.data().galleryPhotos;
+      if(currentView === 'gallery') renderGallery();
+    }
   }).catch(err=>{}) : Promise.resolve();
-  return Promise.all([corePromise, galleryPromise]).then(()=>{
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, workPlans, qrScanLog, galleryPhotos })); }catch(e){}
-  });
+  // IMPORTANT: on a weak/slow connection (common on cheap Android phones
+  // and low-signal mobile data) SCHOOL_DOC.get() can take a very long time
+  // to settle — and the login button stays disabled the whole time it's
+  // pending, which is exactly what makes the app *feel* hung/frozen on the
+  // login screen. Give the cloud fetch at most 4 seconds to unlock the UI;
+  // whatever was already cached in localStorage is shown immediately, and
+  // the cloud data (if it does arrive later) applies itself in the
+  // background via the .then handlers above.
+  return withTimeout(Promise.all([corePromise, galleryPromise]), 4000);
 }
 
 // ===== BACKUP =====
@@ -1416,8 +1442,28 @@ function doLogin(){
     return;
   }
 
-  auth.signInWithEmailAndPassword(u, p)
-    .then((cred)=>{
+  // navigator.onLine only reflects whether the network interface is up —
+  // it stays TRUE even on a very slow or barely-working connection (e.g.
+  // weak mobile signal), so signInWithEmailAndPassword can sit there for
+  // a long time before Firebase's own timeout fires. That "Signing in…"
+  // stall is another spot the app can feel hung. Race it against a local
+  // 8s timeout and fall back to the offline admin cache if the cloud
+  // hasn't answered by then — signInAttempt keeps running in the
+  // background and will still log in normally if it succeeds late.
+  let signInSettled = false;
+  const signInAttempt = auth.signInWithEmailAndPassword(u, p);
+  signInAttempt.catch(()=>{}); // prevent unhandled-rejection noise if the race already moved on
+  const signInTimeout = new Promise(resolve => setTimeout(()=>resolve('timeout'), 8000));
+  Promise.race([signInAttempt, signInTimeout])
+    .then((result)=>{
+      if(result === 'timeout'){
+        if(signInSettled) return;
+        console.warn('Cloud login slow/no response after 8s — trying offline cache.');
+        tryOfflineAdminLogin(emailLower, p, errorBox, btn, originalText);
+        return;
+      }
+      signInSettled = true;
+      const cred = result;
       const email = (cred.user.email || '').toLowerCase();
       const isAdmin = ADMIN_EMAILS.includes(email);
       currentRole = isAdmin ? 'admin' : 'user';
@@ -1429,6 +1475,7 @@ function doLogin(){
       btn.textContent = originalText;
     })
     .catch((err)=>{
+      signInSettled = true;
       // Network fail ho gaya (jaise net achanak chala gaya) — offline cache try karo
       if(err.code === 'auth/network-request-failed'){
         tryOfflineAdminLogin(emailLower, p, errorBox, btn, originalText);
