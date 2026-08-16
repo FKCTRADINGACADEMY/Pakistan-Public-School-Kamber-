@@ -1684,15 +1684,14 @@ function renderStudents(){
   });
   document.getElementById('studentEmpty').style.display = filtered.length ? 'none' : 'block';
   const canDelete = session && session.role === 'admin';
-  filtered.forEach(s => {
-    tbody.innerHTML += `<tr><td>${s.adm}</td><td>${s.name}</td><td>${s.father||'—'}</td><td>${s.cls||'—'}</td><td>${s.section||'—'}</td><td>${s.roll||'—'}</td><td>${s.contact||'—'}</td><td style="display:flex; gap:6px; flex-wrap:wrap;">
+  const rows = filtered.map(s => `<tr><td>${s.adm}</td><td>${s.name}</td><td>${s.father||'—'}</td><td>${s.cls||'—'}</td><td>${s.section||'—'}</td><td>${s.roll||'—'}</td><td>${s.contact||'—'}</td><td style="display:flex; gap:6px; flex-wrap:wrap;">
       <button class="btn small" style="background:var(--navy);" onclick="editStudent(${s.id})">✏️ Edit</button>
       <button class="btn small gold" onclick="printAdmissionForm(${s.id})">🖨️ Form</button>
       <button class="btn small" style="background:#5b4636; color:#fff;" onclick="printIdCard(${s.id})">🪪 ID Card</button>
       <button class="btn small" style="background:#7a5230; color:#fff;" onclick="printTC(${s.id})">📜 TC</button>
       ${canDelete ? `<button class="btn small red" onclick="deleteStudent(${s.id})">Delete</button>` : ''}
-    </td></tr>`;
-  });
+    </td></tr>`);
+  tbody.innerHTML = rows.join('');
   const promoteSel = document.getElementById('promoteFrom');
   if(promoteSel){
     const classes = [...new Set(students.map(s => s.cls).filter(Boolean))];
@@ -1826,13 +1825,14 @@ function renderStaff(){
   thead.innerHTML = isAdmin
     ? '<th>Staff ID</th><th>Name</th><th>Designation</th><th>Contact</th><th>Salary</th><th>Login Email</th><th>Password</th><th></th>'
     : '<th>Staff ID</th><th>Name</th><th>Designation</th>';
-  staff.forEach(s => {
+  const rows = staff.map(s => {
     if(isAdmin){
-      tbody.innerHTML += `<tr><td>STF-${s.staffCode || s.id}</td><td>${s.name}</td><td>${s.desg||'—'}</td><td>${s.contact||'—'}</td><td>${s.salary ? 'Rs. '+s.salary : '—'}</td><td>${s.email||'—'}</td><td>${s.passHash ? '●●●●●●' : '<span style="color:var(--red);">Not set</span>'}</td><td style="display:flex; gap:6px; flex-wrap:wrap;"><button class="btn small" style="background:var(--navy);" onclick="editStaff(${s.id})">Edit</button><button class="btn small" style="background:var(--navy);" onclick="changeStaffPassword(${s.id})">Change Password</button><button class="btn small red" onclick="deleteStaff(${s.id})">Delete</button></td></tr>`;
+      return `<tr><td>STF-${s.staffCode || s.id}</td><td>${s.name}</td><td>${s.desg||'—'}</td><td>${s.contact||'—'}</td><td>${s.salary ? 'Rs. '+s.salary : '—'}</td><td>${s.email||'—'}</td><td>${s.passHash ? '●●●●●●' : '<span style="color:var(--red);">Not set</span>'}</td><td style="display:flex; gap:6px; flex-wrap:wrap;"><button class="btn small" style="background:var(--navy);" onclick="editStaff(${s.id})">Edit</button><button class="btn small" style="background:var(--navy);" onclick="changeStaffPassword(${s.id})">Change Password</button><button class="btn small red" onclick="deleteStaff(${s.id})">Delete</button></td></tr>`;
     } else {
-      tbody.innerHTML += `<tr><td>STF-${s.staffCode || s.id}</td><td>${s.name}</td><td>${s.desg||'—'}</td></tr>`;
+      return `<tr><td>STF-${s.staffCode || s.id}</td><td>${s.name}</td><td>${s.desg||'—'}</td></tr>`;
     }
   });
+  tbody.innerHTML = rows.join('');
 }
 
 // ===== FEES =====
@@ -1941,13 +1941,27 @@ function sendFeePaidWhatsApp(feeId){
     + 'Administration';
   window.open('https://wa.me/' + num + '?text=' + encodeURIComponent(msg), '_blank');
 }
+// Fast O(1) student lookup by id — build once per render instead of
+// calling students.find() inside a fees/results loop. With hundreds of
+// students and thousands of fee/attendance records (a real school after
+// a year or two), the old students.find()-inside-a-loop pattern became
+// O(records × students) — literally millions of comparisons done
+// synchronously on the main thread. That is what actually froze the UI
+// right after login, exactly when cloud data (the full records list)
+// had just synced in — matches "login ke baad data sync hote waqt hang"
+// precisely. A Map turns every lookup into O(1).
+function studentsById(){
+  const map = new Map();
+  students.forEach(s => map.set(s.id, s));
+  return map;
+}
 function renderFees(){
   const tbody = document.getElementById('feeTable');
-  tbody.innerHTML = '';
+  const byId = studentsById();
   let list = fees;
   if(feeFilterClass !== null || feeFilterStatus !== null){
     list = fees.filter(f => {
-      const student = students.find(s => s.id === f.studentId);
+      const student = byId.get(f.studentId);
       const cls = (student && student.cls && student.cls.trim()) || 'Unassigned';
       const classOk = feeFilterClass === null || cls === feeFilterClass;
       const statusOk = feeFilterStatus === null || f.status === feeFilterStatus;
@@ -1968,9 +1982,12 @@ function renderFees(){
   }
   document.getElementById('feeEmpty').style.display = list.length ? 'none' : 'block';
   const isAdmin = session && session.role === 'admin';
-  list.forEach(f => {
-    const student = students.find(s => s.id === f.studentId);
-    tbody.innerHTML += `<tr>
+  // Build all row HTML in an array and join once — repeated tbody.innerHTML +=
+  // inside a loop forces the browser to re-parse the whole growing string on
+  // every iteration (another main-thread cost that scales badly with list size).
+  const rows = list.map(f => {
+    const student = byId.get(f.studentId);
+    return `<tr>
       <td>${student ? student.name : '—'}</td>
       <td>${f.month}</td>
       <td>Rs. ${f.amount}</td>
@@ -1985,6 +2002,7 @@ function renderFees(){
       </td>
     </tr>`;
   });
+  tbody.innerHTML = rows.join('');
 }
 function clearFeeFilter(){
   feeFilterClass = null;
@@ -2213,20 +2231,21 @@ function renderAttendanceForm(){
   const list = clsFilter ? students.filter(s => (s.cls||'').trim() === clsFilter) : students;
   document.getElementById('attEmpty').style.display = list.length ? 'none' : 'block';
   const dayRecord = attendanceRecords[date] || {};
-  list.forEach(s => {
+  const rows = list.map(s => {
     const status = dayRecord[s.id] || 'present';
     const waBtn = status === 'absent'
       ? (waNumberFor(s.contact)
           ? `<button class="btn whatsapp small" onclick="sendAbsentWhatsApp(${s.id})">📱 Message</button>`
           : `<span class="hint">Contact # nahi hai</span>`)
       : '—';
-    tbody.innerHTML += `<tr><td>${s.adm}</td><td>${s.name}</td><td>${s.cls||'—'}</td>
+    return `<tr><td>${s.adm}</td><td>${s.name}</td><td>${s.cls||'—'}</td>
       <td>
         <button class="btn small ${status==='present'?'green':''}" style="${status==='present'?'':'background:var(--muted);'}" onclick="setAttStatus(${s.id},'present')">Present</button>
         <button class="btn small ${status==='absent'?'red':''}" style="${status==='absent'?'':'background:var(--muted);'} margin-left:6px;" onclick="setAttStatus(${s.id},'absent')">Absent</button>
       </td>
       <td>${waBtn}</td></tr>`;
   });
+  tbody.innerHTML = rows.join('');
   renderAttClassSummary(date);
 }
 function renderAttClassSummary(date){
@@ -2288,9 +2307,7 @@ function renderQrScanLog(){
   const todays = qrScanLog.filter(x => x.date === today).sort((a,b) => (b.time||'').localeCompare(a.time||''));
   tbody.innerHTML = '';
   document.getElementById('qrScanLogEmpty').style.display = todays.length ? 'none' : 'block';
-  todays.forEach(x => {
-    tbody.innerHTML += `<tr><td>${x.time || '—'}</td><td>${x.adm || '—'}</td><td>${x.name || '—'}</td><td>${x.cls || '—'}</td></tr>`;
-  });
+  tbody.innerHTML = todays.map(x => `<tr><td>${x.time || '—'}</td><td>${x.adm || '—'}</td><td>${x.name || '—'}</td><td>${x.cls || '—'}</td></tr>`).join('');
 }
 function startQrScanner(){
   if(typeof Html5Qrcode === 'undefined'){ alert('QR scanner library load nahi ho saki. Internet connection check karein.'); return; }
@@ -2426,9 +2443,7 @@ function renderClassTimetable(){
   tbody.innerHTML = '';
   document.getElementById('ttClassEmpty').style.display = rows.length ? 'none' : 'block';
   const canDelete = session && session.role === 'admin';
-  rows.forEach(t => {
-    tbody.innerHTML += `<tr><td>${t.day}</td><td>${t.time}</td><td>${t.subject}</td><td>${t.teacherName || '—'}</td><td>${canDelete ? `<button class="btn small red" onclick="deleteTimetableSlot(${t.id})">Delete</button>` : ''}</td></tr>`;
-  });
+  tbody.innerHTML = rows.map(t => `<tr><td>${t.day}</td><td>${t.time}</td><td>${t.subject}</td><td>${t.teacherName || '—'}</td><td>${canDelete ? `<button class="btn small red" onclick="deleteTimetableSlot(${t.id})">Delete</button>` : ''}</td></tr>`).join('');
 }
 function renderTeacherTimetable(){
   const teacherId = document.getElementById('ttViewTeacher') ? Number(document.getElementById('ttViewTeacher').value) : null;
@@ -2437,9 +2452,7 @@ function renderTeacherTimetable(){
   const rows = timetable.filter(t => t.teacherId === teacherId).sort((a,b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day) || (a.time||'').localeCompare(b.time||''));
   tbody.innerHTML = '';
   document.getElementById('ttTeacherEmpty').style.display = rows.length ? 'none' : 'block';
-  rows.forEach(t => {
-    tbody.innerHTML += `<tr><td>${t.day}</td><td>${t.time}</td><td>Class ${t.cls}${t.section ? '-'+t.section : ''}</td><td>${t.subject}</td></tr>`;
-  });
+  tbody.innerHTML = rows.map(t => `<tr><td>${t.day}</td><td>${t.time}</td><td>Class ${t.cls}${t.section ? '-'+t.section : ''}</td><td>${t.subject}</td></tr>`).join('');
 }
 
 // ===== HOMEWORK =====
@@ -2876,8 +2889,9 @@ function renderResults(){
   if(!list) return;
   document.getElementById('resultEmpty').style.display = examResults.length ? 'none' : 'block';
   const canDelete = session && session.role === 'admin';
+  const byId = studentsById();
   list.innerHTML = examResults.map(r => {
-    const student = students.find(s => s.id === r.studentId);
+    const student = byId.get(r.studentId);
     return `<div class="event-card">
       <h4>${student ? student.name : '—'} — ${r.exam}</h4>
       <div class="d">${r.date} · ${student ? (student.cls||'—')+'/'+(student.section||'—') : ''}</div>
@@ -2969,10 +2983,10 @@ function saveSettings(){
 function renderDashboardClassFees(){
   const tbody = document.getElementById('dashClassFeeTable');
   if(!tbody) return;
-  tbody.innerHTML = '';
+  const byId = studentsById();
   const byClass = {};
   fees.forEach(f => {
-    const student = students.find(s => s.id === f.studentId);
+    const student = byId.get(f.studentId);
     const cls = (student && student.cls && student.cls.trim()) || 'Unassigned';
     if(!byClass[cls]) byClass[cls] = { total:0, paid:0, pending:0 };
     byClass[cls].total += f.amount;
@@ -2982,16 +2996,17 @@ function renderDashboardClassFees(){
   const classNames = Object.keys(byClass).sort((a,b) => a.localeCompare(b, undefined, {numeric:true}));
   const emptyEl = document.getElementById('dashClassFeeEmpty');
   if(emptyEl) emptyEl.style.display = classNames.length ? 'none' : 'block';
-  classNames.forEach(cls => {
+  const rows = classNames.map(cls => {
     const c = byClass[cls];
     const clickable = c.pending > 0;
-    tbody.innerHTML += `<tr>
+    return `<tr>
       <td>${cls}</td>
       <td>Rs. ${c.total}</td>
       <td>Rs. ${c.paid}</td>
       <td>${clickable ? `<span style="cursor:pointer; text-decoration:underline; color:var(--navy); font-weight:600;" onclick="showUnpaidFeesForClass('${cls.replace(/'/g,"\\'")}')">Rs. ${c.pending}</span>` : 'Rs. 0'}</td>
     </tr>`;
   });
+  tbody.innerHTML = rows.join('');
 }
 
 function renderClassWiseCounts(){
@@ -3022,10 +3037,10 @@ function renderDashboardBirthdays(){
 
 function renderClassFeeSummary(){
   const tbody = document.getElementById('repClassFeeTable');
-  tbody.innerHTML = '';
+  const byId = studentsById();
   const byClass = {};
   fees.forEach(f => {
-    const student = students.find(s => s.id === f.studentId);
+    const student = byId.get(f.studentId);
     const cls = (student && student.cls && student.cls.trim()) || 'Unassigned';
     if(!byClass[cls]) byClass[cls] = { count:0, total:0, paid:0, pending:0 };
     byClass[cls].count += 1;
@@ -3035,9 +3050,9 @@ function renderClassFeeSummary(){
   });
   const classNames = Object.keys(byClass).sort((a,b) => a.localeCompare(b, undefined, {numeric:true}));
   document.getElementById('repClassFeeEmpty').style.display = classNames.length ? 'none' : 'block';
-  classNames.forEach(cls => {
+  const rows = classNames.map(cls => {
     const c = byClass[cls];
-    tbody.innerHTML += `<tr>
+    return `<tr>
       <td>${cls}</td>
       <td>${c.count}</td>
       <td>Rs. ${c.total}</td>
@@ -3045,6 +3060,7 @@ function renderClassFeeSummary(){
       <td>Rs. ${c.pending}</td>
     </tr>`;
   });
+  tbody.innerHTML = rows.join('');
 }
 
 function renderDashboard(){

@@ -1,5 +1,5 @@
 // Service Worker for Pakistan Public School Kamber — PWA
-const CACHE_NAME = 'pps-kamber-v10';
+const CACHE_NAME = 'pps-kamber-v11';
 
 // Local (same-origin) core assets — cors mode, addAll works fine.
 // IMPORTANT: every path here MUST exist at the site root exactly as
