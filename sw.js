@@ -1,7 +1,7 @@
 // Service Worker for Pakistan Public School Kamber — PWA
-const CACHE_NAME = 'pps-kamber-v6';
+const CACHE_NAME = 'pps-kamber-v7';
 
-// Relative paths — work whether the site is hosted at root or in a subfolder
+// Local (same-origin) core assets — cors mode, addAll works fine.
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -11,44 +11,63 @@ const CORE_ASSETS = [
   './offline.html'
 ];
 
-// Listen for message from page to skip waiting and activate immediately
+// Cross-origin CDN scripts your app depends on (Firebase + QR libs).
+// <script src="..."> tags request these as "no-cors", so the SW sees
+// them as OPAQUE responses (status 0). Opaque responses must be cached
+// with a no-cors fetch — cache.addAll() with plain URLs uses "cors" mode
+// and would 200/fail depending on CORS headers, so we do these manually.
+const CDN_ASSETS = [
+  'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+  'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
+];
+
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
-// Install event — cache core assets
+// Install — cache local assets normally, cache CDN assets individually
+// (no-cors) so a single failed/blocked CDN request can't fail the whole
+// install. This is what makes offline mode actually reliable.
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('✅ Caching core assets...');
-        return cache.addAll(CORE_ASSETS);
-      })
-      .catch((err) => {
-        console.error('❌ Failed to cache assets:', err);
-      })
+    caches.open(CACHE_NAME).then(async (cache) => {
+      try {
+        await cache.addAll(CORE_ASSETS);
+      } catch (err) {
+        console.error('❌ Failed to cache local core assets:', err);
+      }
+
+      await Promise.all(CDN_ASSETS.map(async (url) => {
+        try {
+          const res = await fetch(url, { mode: 'no-cors' });
+          await cache.put(url, res);
+        } catch (err) {
+          console.warn('⚠️ Could not pre-cache CDN asset:', url, err);
+        }
+      }));
+
+      console.log('✅ Install caching done');
+    })
   );
   self.skipWaiting();
 });
 
-// Activate event — clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
       );
     })
   );
   self.clients.claim();
 });
 
-// Fallback response shown only if there is truly nothing cached at all
-// (very first-ever launch with a dead connection).
 function noCacheFallback() {
   return new Response(
     '<h1>Internet Connect Karein</h1><p>Ye app pehli baar kholne ke liye internet zaroori hai.</p>',
@@ -56,12 +75,9 @@ function noCacheFallback() {
   );
 }
 
-// Network-first for the app page, but with a short timeout. On weak/dead
-// signal (e.g. "0.00 KB/s"), a plain fetch() can sit unresolved for a very
-// long time — that is what made the app feel "stuck/hang" on open. Now we
-// race the network against a 3s timer: whichever settles first wins, and
-// if the network does eventually answer after the timeout, it still quietly
-// updates the cache for next time instead of being wasted.
+// Network-first for the app page, with a short timeout so a dead/very
+// slow connection can't leave the page hanging — falls back to cache,
+// and still quietly updates the cache if the network answer arrives late.
 function navigateWithTimeout(req, timeoutMs = 3000) {
   return new Promise((resolve) => {
     let settled = false;
@@ -82,7 +98,7 @@ function navigateWithTimeout(req, timeoutMs = 3000) {
     fetch(req).then((res) => {
       const clone = res.clone();
       caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
-      if (settled) return; // timer already resolved with cache — just refreshed cache above
+      if (settled) return;
       settled = true;
       clearTimeout(timer);
       resolve(res);
@@ -95,7 +111,6 @@ function navigateWithTimeout(req, timeoutMs = 3000) {
   });
 }
 
-// Fetch event — timeout-guarded network-first for navigation, cache-first for others
 self.addEventListener('fetch', (event) => {
   const req = event.request;
 
@@ -104,27 +119,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For other assets — cache-first, fallback to network
   event.respondWith(
     caches.match(req)
       .then((cached) => {
-        if (cached) {
-          return cached;
-        }
+        if (cached) return cached;
+
         return fetch(req).then((res) => {
-          // Cache any new valid responses
-          if (res && res.status === 200) {
+          // FIX: opaque cross-origin responses (status 0, from no-cors
+          // <script src> requests to Firebase/CDN libs) are valid and
+          // MUST be cached too, or the app silently breaks the next
+          // time it's opened offline. Previously only status===200
+          // (same-origin) responses were cached.
+          const cacheable = res && (res.ok || res.type === 'opaque');
+          if (cacheable) {
             const clone = res.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(req, clone);
-            });
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
           }
           return res;
-        });
+        }).catch(() => undefined);
       })
-      .catch(() => {
-        // If completely offline and nothing cached
-        return new Response('', { status: 504, statusText: 'Offline' });
-      })
+      .catch(() => new Response('', { status: 504, statusText: 'Offline' }))
   );
 });
