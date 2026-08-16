@@ -1,5 +1,5 @@
 // Service Worker for Pakistan Public School Kamber — PWA
-const CACHE_NAME = 'pps-kamber-v5';
+const CACHE_NAME = 'pps-kamber-v6';
 
 // Relative paths — work whether the site is hosted at root or in a subfolder
 const CORE_ASSETS = [
@@ -47,34 +47,60 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch event — network-first for navigation, cache-first for others
+// Fallback response shown only if there is truly nothing cached at all
+// (very first-ever launch with a dead connection).
+function noCacheFallback() {
+  return new Response(
+    '<h1>Internet Connect Karein</h1><p>Ye app pehli baar kholne ke liye internet zaroori hai.</p>',
+    { status: 200, headers: { 'Content-Type': 'text/html' } }
+  );
+}
+
+// Network-first for the app page, but with a short timeout. On weak/dead
+// signal (e.g. "0.00 KB/s"), a plain fetch() can sit unresolved for a very
+// long time — that is what made the app feel "stuck/hang" on open. Now we
+// race the network against a 3s timer: whichever settles first wins, and
+// if the network does eventually answer after the timeout, it still quietly
+// updates the cache for next time instead of being wasted.
+function navigateWithTimeout(req, timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const useCache = async () => {
+      const cachedPage = await caches.match('./index.html');
+      if (cachedPage) return cachedPage;
+      const offline = await caches.match('./offline.html');
+      return offline || noCacheFallback();
+    };
+
+    const timer = setTimeout(async () => {
+      if (settled) return;
+      settled = true;
+      resolve(await useCache());
+    }, timeoutMs);
+
+    fetch(req).then((res) => {
+      const clone = res.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+      if (settled) return; // timer already resolved with cache — just refreshed cache above
+      settled = true;
+      clearTimeout(timer);
+      resolve(res);
+    }).catch(async () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(await useCache());
+    });
+  });
+}
+
+// Fetch event — timeout-guarded network-first for navigation, cache-first for others
 self.addEventListener('fetch', (event) => {
   const req = event.request;
 
-  // For navigation (HTML pages) — try network first, fallback to cached index.html,
-  // and if nothing at all is cached yet, show the friendly offline page instead of
-  // a raw browser/404 error.
   if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          // Cache the response for offline use
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(req, clone);
-          });
-          return res;
-        })
-        .catch(() => {
-          // If offline, serve cached index.html, else the friendly offline page
-          return caches.match('./index.html')
-            .then((cached) => cached || caches.match('./offline.html'))
-            .then((fallback) => fallback || new Response(
-              '<h1>Internet Connect Karein</h1><p>Ye app pehli baar kholne ke liye internet zaroori hai.</p>',
-              { status: 200, headers: { 'Content-Type': 'text/html' } }
-            ));
-        })
-    );
+    event.respondWith(navigateWithTimeout(req));
     return;
   }
 
