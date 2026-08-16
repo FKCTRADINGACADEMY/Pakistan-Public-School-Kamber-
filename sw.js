@@ -1,13 +1,22 @@
 // Service Worker for Pakistan Public School Kamber — PWA
-const CACHE_NAME = 'pps-kamber-v7';
+const CACHE_NAME = 'pps-kamber-v8';
 
 // Local (same-origin) core assets — cors mode, addAll works fine.
+// IMPORTANT: every path here MUST exist at the site root exactly as
+// written, or cache.addAll() fails as a whole and NONE of these files
+// get cached — that was the #1 cause of the app "hanging"/breaking the
+// moment the connection got slow or dropped (offline fallback silently
+// had nothing to fall back to). icon-192x192.png / icon-512x512.png
+// never existed on disk (the real files are icon-192.png at the root
+// and icons/icon-512.png) — fixed below.
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './icon-192x192.png',
-  './icon-512x512.png',
+  './icon-192.png',
+  './icons/icon-512.png',
+  './app-logo.png',
+  './favicon.png',
   './offline.html'
 ];
 
