@@ -374,6 +374,8 @@
             <div class="stat-card"><div class="n" id="statStudents">0</div><div class="l">Total Students</div></div>
             <div class="stat-card"><div class="n" id="statStaff">0</div><div class="l">Total Teachers / Staff</div><div id="statStaffOnline" style="font-size:12px; color:var(--muted); margin-top:4px;"></div></div>
             <div class="stat-card admin-only"><div class="n" id="statPresent">0</div><div class="l">Present Today</div></div>
+            <div class="stat-card admin-only" style="cursor:pointer;" onclick="showView('attendance')"><div class="n" id="statAbsent">0</div><div class="l">Absent Today</div></div>
+            <div class="stat-card admin-only" style="cursor:pointer;" onclick="showView('attendance')"><div class="n" id="statNotMarked">0</div><div class="l">Attendance Not Marked Yet</div></div>
             <div class="stat-card admin-only" style="cursor:pointer;" onclick="showAllPendingFees()"><div class="n" id="statPending">0</div><div class="l">Pending Fee Challans</div></div>
             <div class="stat-card admin-only"><div class="n" id="statCollected">Rs. 0</div><div class="l">Fee Collected</div></div>
           </div>
@@ -516,7 +518,7 @@
           <div class="panel">
             <h3>Class-wise Attendance Summary</h3>
             <table>
-              <thead><tr><th>Class</th><th>Total Students</th><th>Present</th><th>Absent</th></tr></thead>
+              <thead><tr><th>Class</th><th>Total Students</th><th>Present</th><th>Absent</th><th>Not Marked</th></tr></thead>
               <tbody id="attClassSummaryBody"></tbody>
             </table>
             <div class="empty" id="attClassSummaryEmpty">Abhi koi student nahi hai.</div>
@@ -826,6 +828,7 @@
             <div class="stat-grid">
               <div class="stat-card"><div class="n" id="repPresent">0</div><div class="l">Present</div></div>
               <div class="stat-card"><div class="n" id="repAbsent">0</div><div class="l">Absent</div></div>
+              <div class="stat-card"><div class="n" id="repNotMarked">0</div><div class="l">Not Marked</div></div>
             </div>
           </div>
         </div>
@@ -1132,7 +1135,13 @@ function cloudSetAttendance(date, studentId, status){
   loadedAttendanceMonths.add(monthKey);
   // Deep-merge just this one date+student cell so other devices' attendance
   // entries for the same day (or other days/months) are never overwritten.
-  ref.set({ [date]: { [String(studentId)]: status } }, { merge: true })
+  // status === null means "Clear" was pressed — actually delete that one
+  // cell (FieldValue.delete()) instead of writing null, so the student
+  // goes back to a real "Not Marked" state instead of a stored null value.
+  const cellValue = status === null
+    ? firebase.firestore.FieldValue.delete()
+    : status;
+  ref.set({ [date]: { [String(studentId)]: cellValue } }, { merge: true })
     .catch(err => {
       console.warn('Cloud attendance sync failed:', err);
       const s = document.getElementById('saveStatus');
@@ -2607,7 +2616,7 @@ function renderAttendanceForm(){
   document.getElementById('attEmpty').style.display = list.length ? 'none' : 'block';
   const dayRecord = attendanceRecords[date] || {};
   const rows = list.map(s => {
-    const status = dayRecord[s.id] || 'present';
+    const status = dayRecord[s.id] || '';
     const waBtn = status === 'absent'
       ? (waNumberFor(s.contact)
           ? `<button class="btn whatsapp small" onclick="sendAbsentWhatsApp(${s.id})">📱 Message</button>`
@@ -2617,6 +2626,7 @@ function renderAttendanceForm(){
       <td>
         <button class="btn small ${status==='present'?'green':''}" style="${status==='present'?'':'background:var(--muted);'}" onclick="setAttStatus(${s.id},'present')">Present</button>
         <button class="btn small ${status==='absent'?'red':''}" style="${status==='absent'?'':'background:var(--muted);'} margin-left:6px;" onclick="setAttStatus(${s.id},'absent')">Absent</button>
+        ${status ? `<button class="btn small" style="background:var(--muted); margin-left:6px;" onclick="setAttStatus(${s.id},'')">Clear</button>` : '<span class="hint" style="margin-left:6px;">Not marked</span>'}
       </td>
       <td>${waBtn}</td></tr>`;
   });
@@ -2631,22 +2641,28 @@ function renderAttClassSummary(date){
   const counts = {};
   students.forEach(s => {
     const cls = (s.cls||'').trim() || 'Unassigned';
-    if(!counts[cls]) counts[cls] = { total:0, present:0, absent:0 };
+    if(!counts[cls]) counts[cls] = { total:0, present:0, absent:0, notMarked:0 };
     counts[cls].total++;
-    const status = dayRecord[s.id] || 'present';
-    if(status === 'absent') counts[cls].absent++; else counts[cls].present++;
+    const status = dayRecord[s.id] || '';
+    if(status === 'absent') counts[cls].absent++;
+    else if(status === 'present') counts[cls].present++;
+    else counts[cls].notMarked++;
   });
   const classes = Object.keys(counts).sort((a,b)=> a.localeCompare(b, undefined, {numeric:true}));
   const emptyEl = document.getElementById('attClassSummaryEmpty');
   if(emptyEl) emptyEl.style.display = classes.length ? 'none' : 'block';
-  body.innerHTML = classes.map(c => `<tr><td>${c}</td><td>${counts[c].total}</td><td>${counts[c].present}</td><td>${counts[c].absent}</td></tr>`).join('');
+  body.innerHTML = classes.map(c => `<tr><td>${c}</td><td>${counts[c].total}</td><td>${counts[c].present}</td><td>${counts[c].absent}</td><td>${counts[c].notMarked}</td></tr>`).join('');
 }
 function setAttStatus(studentId, status){
   const date = document.getElementById('attDate').value;
   if(!attendanceRecords[date]) attendanceRecords[date] = {};
-  attendanceRecords[date][studentId] = status;
+  if(status){
+    attendanceRecords[date][studentId] = status;
+  } else {
+    delete attendanceRecords[date][studentId];
+  }
   saveData();
-  cloudSetAttendance(date, studentId, status);
+  cloudSetAttendance(date, studentId, status || null);
   renderAttendanceForm();
 }
 function sendAbsentWhatsApp(studentId){
@@ -3448,8 +3464,14 @@ function renderDashboard(){
   }
   const today = new Date().toISOString().slice(0,10);
   const todayRec = attendanceRecords[today] || {};
-  const present = students.filter(s => (todayRec[s.id] || 'present') === 'present').length;
+  const present = students.filter(s => todayRec[s.id] === 'present').length;
+  const absent = students.filter(s => todayRec[s.id] === 'absent').length;
+  const notMarked = students.filter(s => !todayRec[s.id]).length;
   document.getElementById('statPresent').textContent = present;
+  const statAbsentEl = document.getElementById('statAbsent');
+  if(statAbsentEl) statAbsentEl.textContent = absent;
+  const notMarkedEl = document.getElementById('statNotMarked');
+  if(notMarkedEl) notMarkedEl.textContent = notMarked;
   document.getElementById('statPending').textContent = fees.filter(f => f.status === 'pending').length;
   const collected = fees.filter(f => f.status === 'paid').reduce((sum,f) => sum + f.amount, 0);
   document.getElementById('statCollected').textContent = 'Rs. ' + collected;
@@ -3475,9 +3497,12 @@ function renderReports(){
   renderClassFeeSummary();
   const today = new Date().toISOString().slice(0,10);
   const todayRec = attendanceRecords[today] || {};
-  const present = students.filter(s => (todayRec[s.id] || 'present') === 'present').length;
+  const present = students.filter(s => todayRec[s.id] === 'present').length;
+  const absent = students.filter(s => todayRec[s.id] === 'absent').length;
   document.getElementById('repPresent').textContent = present;
-  document.getElementById('repAbsent').textContent = students.length - present;
+  document.getElementById('repAbsent').textContent = absent;
+  const repNotMarkedEl = document.getElementById('repNotMarked');
+  if(repNotMarkedEl) repNotMarkedEl.textContent = students.length - present - absent;
 }
 
 function renderOnly(){
