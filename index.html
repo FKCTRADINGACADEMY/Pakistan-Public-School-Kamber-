@@ -372,7 +372,7 @@
         <div class="view active" id="view-dashboard">
           <div class="stat-grid">
             <div class="stat-card"><div class="n" id="statStudents">0</div><div class="l">Total Students</div></div>
-            <div class="stat-card"><div class="n" id="statStaff">0</div><div class="l">Total Teachers / Staff</div></div>
+            <div class="stat-card"><div class="n" id="statStaff">0</div><div class="l">Total Teachers / Staff</div><div id="statStaffOnline" style="font-size:12px; color:var(--muted); margin-top:4px;"></div></div>
             <div class="stat-card admin-only"><div class="n" id="statPresent">0</div><div class="l">Present Today</div></div>
             <div class="stat-card admin-only" style="cursor:pointer;" onclick="showAllPendingFees()"><div class="n" id="statPending">0</div><div class="l">Pending Fee Challans</div></div>
             <div class="stat-card admin-only"><div class="n" id="statCollected">Rs. 0</div><div class="l">Fee Collected</div></div>
@@ -968,6 +968,34 @@ const timetableCol   = makeRecordCollection('timetable');
 const homeworkCol    = makeRecordCollection('homework');
 const workPlansCol   = makeRecordCollection('workPlans');
 const galleryCol     = makeRecordCollection('gallery');
+// 'presence' collection sirf ye track karti hai ke koi staff member is waqt
+// app mein "active/online" hai ya nahi — har login staff apna 'lastSeen'
+// timestamp har ~45 second baad yahan update karta hai (heartbeat). Chhota/
+// temporary data hai, is liye alag collection mein (backup/local storage
+// mein save nahi hota).
+const presenceCol   = makeRecordCollection('presence');
+let presence = [];
+let presenceMap = {}; // { staffId: lastSeenMillis }
+let currentStaffId = null;
+// Ek staff "Online" tab tak samjha jata hai jab tak uska aakhri heartbeat
+// 90 second se purana na ho — heartbeat har 45 second par bhejta hai, is
+// liye 90 second ka margin ek missed beat ko bhi absorb kar leta hai bina
+// galat waqt par "Offline" dikhaye.
+const PRESENCE_STALE_MS = 90 * 1000;
+function isStaffOnline(staffId){
+  const rec = presence.find(p => String(p.staffId) === String(staffId));
+  if(!rec || !rec.lastSeen) return false;
+  return (Date.now() - rec.lastSeen) < PRESENCE_STALE_MS;
+}
+function sendPresenceHeartbeat(){
+  if(!currentStaffId || !presenceCol.colRef) return;
+  presenceCol.colRef.doc(String(currentStaffId)).set({
+    staffId: currentStaffId,
+    id: currentStaffId,
+    lastSeen: Date.now()
+  }).catch(()=>{});
+}
+let presenceHeartbeatTimer = null;
 const STORAGE_KEY = 'pps_kamber_school_data_v1';
 
 let currentView = 'dashboard';
@@ -1443,13 +1471,20 @@ function loadData(){
       loadAndListenRecordCollection(timetableCol, ()=>timetable, (a)=>{timetable=a;}),
       loadAndListenRecordCollection(homeworkCol, ()=>homework, (a)=>{homework=a;}),
       loadAndListenRecordCollection(workPlansCol, ()=>workPlans, (a)=>{workPlans=a;}),
-      loadAndListenRecordCollection(galleryCol, ()=>galleryPhotos, (a)=>{galleryPhotos=a;})
+      loadAndListenRecordCollection(galleryCol, ()=>galleryPhotos, (a)=>{galleryPhotos=a;}),
+      loadAndListenRecordCollection(presenceCol, ()=>presence, (a)=>{presence=a;})
     ]).then(()=>{
       if(oldQrScanLog) migrateOldQrScanIfNeeded(oldQrScanLog);
       listenCurrentMonthAttendance();
       listenCurrentMonthQrScan();
       renderOnly();
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, workPlans, qrScanLog, galleryPhotos })); }catch(e){}
+      // Presence sirf heartbeat timestamps se track hoti hai, koi realtime
+      // "logout" event nahi hota — is liye har 15 second mein dashboard/staff
+      // page (agar khula ho) dobara render karte hain taake koi staff jo tab
+      // band karke gaya ho (bina Logout dabaye) 90 second baad khud Offline
+      // dikh jaye.
+      setInterval(()=>{ if(currentView === 'dashboard' || currentView === 'staff') renderCurrentView(); }, 15000);
     });
   }).catch(err=>{ console.warn('Cloud se data load nahi ho saka', err); });
   const galleryPromise = SCHOOL_GALLERY_DOC ? SCHOOL_GALLERY_DOC.get({source:'server'}).catch(()=>SCHOOL_GALLERY_DOC.get()).then(doc=>{
@@ -1673,6 +1708,14 @@ function enterApp(name, isRestore){
   if(!isRestore) logActivity('Login');
   fillSettingsForm();
   renderAll();
+  // Sirf staff (admin nahi) ke liye heartbeat shuru karein — pehla beat turant,
+  // phir har 45 second par, taake baaqi devices par is staff ka status turant
+  // "Online" ho jaye aur zyada dair chalu rahe.
+  if(currentRole === 'user' && currentStaffId){
+    sendPresenceHeartbeat();
+    if(presenceHeartbeatTimer) clearInterval(presenceHeartbeatTimer);
+    presenceHeartbeatTimer = setInterval(sendPresenceHeartbeat, 45000);
+  }
 }
 
 async function hashPassword(pw){
@@ -1716,6 +1759,7 @@ function doLogin(){
         return;
       }
       currentRole = 'user';
+      currentStaffId = match.id;
       const proceed = () => {
         enterApp(match.name);
         btn.disabled = false;
@@ -1845,6 +1889,13 @@ function doLogout(){
   if(auth && auth.currentUser){
     auth.signOut().catch(()=>{});
   }
+  // Logout hote hi is device ki presence entry hata dein taake baaqi
+  // devices par ye staff foran "Offline" dikhe (90 second wait na kare).
+  if(currentStaffId && presenceCol.colRef){
+    presenceCol.colRef.doc(String(currentStaffId)).delete().catch(()=>{});
+  }
+  if(presenceHeartbeatTimer){ clearInterval(presenceHeartbeatTimer); presenceHeartbeatTimer = null; }
+  currentStaffId = null;
   session = null;
   document.getElementById('loginUser').value = '';
   document.getElementById('loginPass').value = '';
@@ -2135,13 +2186,16 @@ function renderStaff(){
   document.getElementById('staffEmpty').style.display = staff.length ? 'none' : 'block';
   const isAdmin = session && session.role === 'admin';
   thead.innerHTML = isAdmin
-    ? '<th>Staff ID</th><th>Name</th><th>Designation</th><th>Contact</th><th>Salary</th><th>Login Email</th><th>Password</th><th></th>'
-    : '<th>Staff ID</th><th>Name</th><th>Designation</th>';
+    ? '<th>Staff ID</th><th>Name</th><th>Designation</th><th>Contact</th><th>Status</th><th>Salary</th><th>Login Email</th><th>Password</th><th></th>'
+    : '<th>Staff ID</th><th>Name</th><th>Designation</th><th>Status</th>';
+  const statusBadge = (s) => isStaffOnline(s.id)
+    ? '<span style="color:#0E6B4C; font-weight:600;">● Online</span>'
+    : '<span style="color:var(--muted);">○ Offline</span>';
   const rows = staff.map(s => {
     if(isAdmin){
-      return `<tr><td>STF-${s.staffCode || s.id}</td><td>${s.name}</td><td>${s.desg||'—'}</td><td>${s.contact||'—'}</td><td>${s.salary ? 'Rs. '+s.salary : '—'}</td><td>${s.email||'—'}</td><td>${s.passHash ? '●●●●●●' : '<span style="color:var(--red);">Not set</span>'}</td><td style="display:flex; gap:6px; flex-wrap:wrap;"><button class="btn small" style="background:var(--navy);" onclick="editStaff(${s.id})">Edit</button><button class="btn small" style="background:var(--navy);" onclick="changeStaffPassword(${s.id})">Change Password</button><button class="btn small red" onclick="deleteStaff(${s.id})">Delete</button></td></tr>`;
+      return `<tr><td>STF-${s.staffCode || s.id}</td><td>${s.name}</td><td>${s.desg||'—'}</td><td>${s.contact||'—'}</td><td>${statusBadge(s)}</td><td>${s.salary ? 'Rs. '+s.salary : '—'}</td><td>${s.email||'—'}</td><td>${s.passHash ? '●●●●●●' : '<span style="color:var(--red);">Not set</span>'}</td><td style="display:flex; gap:6px; flex-wrap:wrap;"><button class="btn small" style="background:var(--navy);" onclick="editStaff(${s.id})">Edit</button><button class="btn small" style="background:var(--navy);" onclick="changeStaffPassword(${s.id})">Change Password</button><button class="btn small red" onclick="deleteStaff(${s.id})">Delete</button></td></tr>`;
     } else {
-      return `<tr><td>STF-${s.staffCode || s.id}</td><td>${s.name}</td><td>${s.desg||'—'}</td></tr>`;
+      return `<tr><td>STF-${s.staffCode || s.id}</td><td>${s.name}</td><td>${s.desg||'—'}</td><td>${statusBadge(s)}</td></tr>`;
     }
   });
   tbody.innerHTML = rows.join('');
@@ -3387,6 +3441,11 @@ function renderClassFeeSummary(){
 function renderDashboard(){
   document.getElementById('statStudents').textContent = students.length;
   document.getElementById('statStaff').textContent = staff.length;
+  const staffOnlineEl = document.getElementById('statStaffOnline');
+  if(staffOnlineEl){
+    const onlineCount = staff.filter(s => isStaffOnline(s.id)).length;
+    staffOnlineEl.textContent = onlineCount + ' Online · ' + (staff.length - onlineCount) + ' Offline';
+  }
   const today = new Date().toISOString().slice(0,10);
   const todayRec = attendanceRecords[today] || {};
   const present = students.filter(s => (todayRec[s.id] || 'present') === 'present').length;
@@ -3567,15 +3626,15 @@ window.addEventListener('offline', ()=>{
       .then(function(reg) {
         console.log('✅ Service Worker registered successfully:', reg);
 
-        // Pehle har 5 second mein version check hota tha — is se app hamesha
-        // background mein network hit karti rehti thi (har staff device par),
-        // jo slow/mobile net par UI ko baar-baar rok (hang) deta tha. Ab check
-        // kam frequent hai (har 5 minute) aur jab user tab par wapis aaye
-        // (visibilitychange) tab bhi ek dafa check ho jata hai — isse update
-        // utni hi jaldi mil jata hai bina app ko baar-baar disturb kiye.
+        // Har 3 second mein version check hota hai (jaise dusre school ki app
+        // mein hai) taake installed PWA update ko turant detect kar le. Pehle
+        // ye 5 minute par tha — us waqt "hang" ki asal wajah alag thi (bade
+        // inline base64 images + sw.js cache list mein galat filenames, jo ab
+        // fix ho chuki hain — README.md dekhein), is liye ab tez check karna
+        // safe hai.
         setInterval(function() {
           reg.update();
-        }, 300000);
+        }, 3000);
         document.addEventListener('visibilitychange', function(){
           if(document.visibilityState === 'visible') reg.update();
         });

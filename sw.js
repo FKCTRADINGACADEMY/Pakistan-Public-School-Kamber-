@@ -1,5 +1,12 @@
 // Service Worker for Pakistan Public School Kamber — PWA
-const CACHE_NAME = 'pps-kamber-v11';
+//
+// CACHE_NAME AB KHUD-BA-KHUD (AUTOMATIC) SET HOTA HAI.
+// Neeche '__BUILD_ID__' ek placeholder hai — GitHub Actions workflow
+// (.github/workflows/deploy.yml) har push par ise khud commit SHA se
+// replace kar deta hai. Isliye ab AAPKO KABHI BHI MANUALLY VERSION
+// NUMBER BADHANE KI ZAROORAT NAHI — bas normal push karein, version
+// khud unique ho jayega aur purana cache khud saaf ho jayega.
+const CACHE_NAME = 'pps-kamber-__BUILD_ID__';
 
 // Local (same-origin) core assets — cors mode, addAll works fine.
 // IMPORTANT: every path here MUST exist at the site root exactly as
