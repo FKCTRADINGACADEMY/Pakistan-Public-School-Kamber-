@@ -731,7 +731,7 @@
               <div class="field" style="grid-column:1/-1;"><label>Photo File</label><input id="galFile" type="file" accept="image/*"></div>
             </div>
             <button class="btn green" onclick="addGalleryPhoto()">+ Add to Gallery</button>
-            <p class="hint">Photos is browser/cloud database mein save hoti hain, isliye bohot zyada ya bohot badi photos add karne se bachein.</p>
+            <p class="hint">Photos compress hokar save hoti hain (max ~900px). Bohot zyada photos se local storage bhar sakta hai — 80 photos tak recommended. Purani delete karte rahein.</p>
           </div>
           <div class="panel">
             <h3>Gallery</h3>
@@ -1175,12 +1175,16 @@ function cloudSetAttendance(date, studentId, status){
     });
 }
 function saveGalleryData(){
+  // Gallery base64 is large — store in its OWN localStorage key so the
+  // main school-data blob stays under quota and other pages keep working
+  // even if gallery fills the 5MB limit.
   try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const existing = raw ? JSON.parse(raw) : {};
-    existing.galleryPhotos = galleryPhotos;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
-  }catch(e){}
+    localStorage.setItem(STORAGE_KEY + '_gallery', JSON.stringify(galleryPhotos));
+  }catch(e){
+    console.warn('Gallery localStorage full — cloud still has photos:', e);
+    const s = document.getElementById('saveStatus');
+    if(s) s.textContent = 'Gallery storage full — purani photos delete karein';
+  }
 }
 // Shared one-time migration helper for every simple record-collection field
 // (students, staff, notices, events, examResults, timetable, homework,
@@ -1206,7 +1210,12 @@ function loadAndListenRecordCollection(recordCol, getArr, setArr){
     recordCol.listen(getArr, setArr, renderOnly);
   });
 }
-function newId(){ return Date.now()*1000 + Math.floor(Math.random()*1000); }
+function newId(){
+  // Multi-device safe-ish id: timestamp + random + small counter
+  if(typeof newId._c === 'undefined') newId._c = 0;
+  newId._c = (newId._c + 1) % 1000;
+  return Date.now() * 1000 + Math.floor(Math.random() * 900) + newId._c;
+}
 function nextStaffCode(){
   const used = staff.map(s => s.staffCode).filter(Boolean);
   return used.length ? Math.max(...used) + 1 : 1001;
@@ -1481,6 +1490,14 @@ function loadData(){
   if(raw){
     try{ applyData(JSON.parse(raw)); }catch(e){}
   }
+  // Gallery lives in a separate key (avoids main quota blow-up)
+  try{
+    const gRaw = localStorage.getItem(STORAGE_KEY + '_gallery');
+    if(gRaw){
+      const gArr = JSON.parse(gRaw);
+      if(Array.isArray(gArr) && gArr.length) galleryPhotos = gArr;
+    }
+  }catch(e){}
   if(!SCHOOL_DOC) return Promise.resolve();
   const corePromise = SCHOOL_DOC.get({source:'server'}).catch(()=>SCHOOL_DOC.get()).then(doc=>{
     let oldAttendance = null;
@@ -1523,7 +1540,7 @@ function loadData(){
       listenCurrentMonthAttendance();
       listenCurrentMonthQrScan();
       renderOnly();
-      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, workPlans, qrScanLog, galleryPhotos })); }catch(e){}
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, workPlans, qrScanLog })); }catch(e){} try{ localStorage.setItem(STORAGE_KEY + '_gallery', JSON.stringify(galleryPhotos)); }catch(e){}
       // Presence sirf heartbeat timestamps se track hoti hai, koi realtime
       // "logout" event nahi hota — is liye har 15 second mein dashboard/staff
       // page (agar khula ho) dobara render karte hain taake koi staff jo tab
@@ -2912,12 +2929,23 @@ function addHomework(){
     fileInput.value = '';
     renderHomework();
   };
-  if(file && file.size < 1500000){
-    const reader = new FileReader();
-    reader.onload = e => finish(e.target.result);
-    reader.readAsDataURL(file);
+  if(file){
+    if(file.type && file.type.indexOf('image/') === 0){
+      // Images: compress first (same helper as gallery)
+      compressImageFile(file, 1000, 0.7).then(finish).catch(function(){
+        alert('Image process nahi ho saki — homework file ke bagair post ho raha hai.');
+        finish(null);
+      });
+    } else if(file.size < 1500000){
+      const reader = new FileReader();
+      reader.onload = e => finish(e.target.result);
+      reader.onerror = () => finish(null);
+      reader.readAsDataURL(file);
+    } else {
+      alert('File 1.5MB se choti honi chahiye — homework file ke bagair post ho raha hai.');
+      finish(null);
+    }
   } else {
-    if(file) alert('File 1.5MB se choti honi chahiye — homework file ke bagair post ho raha hai.');
     finish(null);
   }
 }
@@ -3183,19 +3211,72 @@ function printEvent(id){
   document.getElementById('printModal').style.display = 'flex';
 }
 
+// ===== IMAGE COMPRESSION (gallery + future use) =====
+// Large phone photos (3–8MB) as base64 blow localStorage (5MB) and
+// Firestore docs. Resize to max 900px wide @ ~0.65 JPEG quality first.
+function compressImageFile(file, maxWidth, quality){
+  maxWidth = maxWidth || 900;
+  quality = quality || 0.65;
+  return new Promise(function(resolve, reject){
+    if(!file || !file.type || file.type.indexOf('image/') !== 0){
+      // non-image: pass through as data URL if small, else reject size
+      if(file && file.size > 1500000){
+        reject(new Error('File 1.5MB se bari hai'));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(e){ resolve(e.target.result); };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e){
+      const img = new Image();
+      img.onload = function(){
+        let w = img.width, h = img.height;
+        if(w > maxWidth){
+          h = Math.round(h * (maxWidth / w));
+          w = maxWidth;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+        // If still huge, drop quality further
+        if(dataUrl.length > 450000){
+          dataUrl = canvas.toDataURL('image/jpeg', 0.45);
+        }
+        resolve(dataUrl);
+      };
+      img.onerror = function(){ reject(new Error('Image load failed')); };
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 // ===== GALLERY =====
 function addGalleryPhoto(){
   const title = document.getElementById('galTitle').value.trim();
   const fileInput = document.getElementById('galFile');
   const file = fileInput.files[0];
   if(!file){ alert('Pehle ek photo select karein.'); return; }
-  const reader = new FileReader();
-  reader.onload = function(e){
+  if(galleryPhotos.length >= 80){
+    alert('Gallery limit: max 80 photos. Purani photos delete karke naya add karein (storage bachane ke liye).');
+    return;
+  }
+  const btn = document.querySelector('#view-gallery .btn.green, #view-gallery button.btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Compressing…'; }
+  compressImageFile(file, 900, 0.65).then(function(dataUrl){
     const newPhoto = {
       id: newId(),
       title: title || 'Untitled',
       album: document.getElementById('galType').value,
-      dataUrl: e.target.result,
+      dataUrl: dataUrl,
       date: new Date().toDateString()
     };
     galleryPhotos.unshift(newPhoto);
@@ -3204,8 +3285,11 @@ function addGalleryPhoto(){
     fileInput.value = '';
     renderGallery();
     saveGalleryData();
-  };
-  reader.readAsDataURL(file);
+  }).catch(function(err){
+    alert('Photo save nahi ho saki: ' + (err && err.message ? err.message : 'unknown error'));
+  }).finally(function(){
+    if(btn){ btn.disabled = false; btn.textContent = '+ Add to Gallery'; }
+  });
 }
 function deleteGalleryPhoto(id){
   if(session.role !== 'admin'){ alert('Sirf Admin delete kar sakta hai.'); return; }
@@ -3700,6 +3784,14 @@ window.addEventListener('offline', ()=>{
 });
 </script>
 
+<!-- ===== UPDATE BANNER (PWA) ===== -->
+<div id="swUpdateBanner" style="display:none; position:fixed; left:12px; right:12px; bottom:16px; z-index:9999;
+  background:#0E6B4C; color:#fff; border-radius:12px; padding:12px 16px; box-shadow:0 8px 28px rgba(0,0,0,0.28);
+  font-family:Manrope,sans-serif; font-size:13.5px; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+  <span>🔄 Naya version ready hai — update karein taake latest features milen.</span>
+  <button onclick="window.location.reload()" style="background:#C99A3A; color:#123D2E; border:none; border-radius:10px; padding:8px 16px; font-weight:700; cursor:pointer;">Update Now</button>
+</div>
+
 <!-- ===== SERVICE WORKER REGISTRATION (AUTO-UPDATE) ===== -->
 <script>
   if('serviceWorker' in navigator){
@@ -3707,26 +3799,25 @@ window.addEventListener('offline', ()=>{
       .then(function(reg) {
         console.log('✅ Service Worker registered successfully:', reg);
 
-        // Har 3 second mein version check hota hai (jaise dusre school ki app
-        // mein hai) taake installed PWA update ko turant detect kar le. Pehle
-        // ye 5 minute par tha — us waqt "hang" ki asal wajah alag thi (bade
-        // inline base64 images + sw.js cache list mein galat filenames, jo ab
-        // fix ho chuki hain — README.md dekhein), is liye ab tez check karna
-        // safe hai.
+        // Pehle har 3s check hota tha — battery + network waste + possible
+        // reload loops. Ab 60s + tab visible hone par check.
         setInterval(function() {
           reg.update();
-        }, 3000);
+        }, 60000);
         document.addEventListener('visibilitychange', function(){
           if(document.visibilityState === 'visible') reg.update();
         });
 
-        // Naya version mil jaye to usay turant activate karne ko kaho
+        // Naya version mil jaye to activate, lekin hard-reload tab hi jab
+        // user "Update Now" dabaaye (controllerchange). Beech me banner dikhao.
         reg.addEventListener('updatefound', function() {
           const newWorker = reg.installing;
           if (!newWorker) return;
           newWorker.addEventListener('statechange', function() {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
               newWorker.postMessage({ type: 'SKIP_WAITING' });
+              const ban = document.getElementById('swUpdateBanner');
+              if(ban) ban.style.display = 'flex';
             }
           });
         });
@@ -3735,7 +3826,7 @@ window.addEventListener('offline', ()=>{
         console.log('❌ Service Worker registration failed:', err);
       });
 
-    // Naya SW control lete hi page ek dafa reload ho jaye taake naya content dikhe
+    // User jab Update Now dabaaye / naya SW control le to ek dafa reload
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', function() {
       if (refreshing) return;

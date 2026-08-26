@@ -4,6 +4,9 @@ name: Deploy to GitHub Pages (auto-version)
 # 1) sw.js ke andar __BUILD_ID__ ko is commit ke unique SHA se replace karega
 #    (matlab CACHE_NAME khud-ba-khud badal jayega — manually kuch nahi karna).
 # 2) Poora site GitHub Pages par publish kar dega.
+#
+# Repo me is file ko is path par rakhein:
+#   .github/workflows/deploy.yml
 on:
   push:
     branches: [ main ]
@@ -30,8 +33,13 @@ jobs:
 
       - name: Auto-bump CACHE_NAME in sw.js using this commit's SHA
         run: |
-          sed -i "s/__BUILD_ID__/${GITHUB_SHA::8}/g" sw.js
-          echo "Naya cache version set ho gaya: pps-kamber-${GITHUB_SHA::8}"
+          if [ -f sw.js ]; then
+            sed -i "s/__BUILD_ID__/${GITHUB_SHA::8}/g" sw.js
+            echo "Naya cache version set ho gaya: pps-kamber-${GITHUB_SHA::8}"
+            grep -n "CACHE_NAME" sw.js | head -3
+          else
+            echo "⚠️ sw.js not found at repo root — skipping version bump"
+          fi
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
