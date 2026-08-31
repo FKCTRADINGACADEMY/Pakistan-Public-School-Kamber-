@@ -335,6 +335,7 @@
         <li><button data-view="students" onclick="showView('students')">👨‍🎓 Student Management</button></li>
         <li><button data-view="staff" onclick="showView('staff')">👩‍🏫 Teachers &amp; Staff</button></li>
         <li class="admin-only"><button data-view="fees" onclick="showView('fees')">💰 Fees &amp; Challan</button></li>
+        <li class="admin-only"><button data-view="expenses" onclick="showView('expenses')">🧾 School Expenses</button></li>
         <li><button data-view="attendance" onclick="showView('attendance')">📅 Attendance</button></li>
         <li><button data-view="qrattendance" onclick="showView('qrattendance')">🔳 QR Attendance</button></li>
         <li><button data-view="timetable" onclick="showView('timetable')">🗓️ Timetable</button></li>
@@ -673,6 +674,53 @@
         </div>
 
         <!-- Notices -->
+        <div class="view" id="view-expenses">
+          <div class="panel admin-only">
+            <h3>Add School Expense</h3>
+            <div class="form-grid">
+              <div class="field"><label>Date</label><input id="expDate" type="date"></div>
+              <div class="field"><label>Category</label>
+                <select id="expCategory">
+                  <option value="Utilities">Utilities (Bijli / Gas / Water)</option>
+                  <option value="Stationery">Stationery / Books</option>
+                  <option value="Maintenance">Maintenance / Repair</option>
+                  <option value="Transport">Transport / Fuel</option>
+                  <option value="Events">Events / Functions</option>
+                  <option value="Staff Salary">Staff Salary Payment</option>
+                  <option value="Misc">Miscellaneous</option>
+                </select>
+              </div>
+              <div class="field"><label>Amount (Rs.)</label><input id="expAmount" type="number" min="0" step="1"></div>
+              <div class="field"><label>Note / Description</label><input id="expNote" type="text" placeholder="e.g. August electricity bill"></div>
+            </div>
+            <button class="btn green" onclick="addExpense()">+ Add Expense</button>
+          </div>
+          <div class="panel">
+            <h3>Expense Records</h3>
+            <div class="form-grid" style="margin-bottom:12px;">
+              <div class="field"><label>Filter Month</label><input id="expFilterMonth" type="month" onchange="renderExpenses()"></div>
+              <div class="field"><label>Category</label>
+                <select id="expFilterCat" onchange="renderExpenses()">
+                  <option value="">All Categories</option>
+                  <option value="Utilities">Utilities</option>
+                  <option value="Stationery">Stationery</option>
+                  <option value="Maintenance">Maintenance</option>
+                  <option value="Transport">Transport</option>
+                  <option value="Events">Events</option>
+                  <option value="Staff Salary">Staff Salary</option>
+                  <option value="Misc">Misc</option>
+                </select>
+              </div>
+            </div>
+            <p class="hint" id="expTotalHint">Total: Rs. 0</p>
+            <table>
+              <thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Note</th><th></th></tr></thead>
+              <tbody id="expTable"></tbody>
+            </table>
+            <div class="empty" id="expEmpty">Abhi koi expense record nahi hai.</div>
+          </div>
+        </div>
+
         <div class="view" id="view-notices">
           <div class="panel">
             <h3>Post a Notice</h3>
@@ -965,6 +1013,7 @@ function makeRecordCollection(name){
 const studentsCol   = makeRecordCollection('students');
 const staffCol       = makeRecordCollection('staff');
 const noticesCol     = makeRecordCollection('notices');
+const expensesCol    = makeRecordCollection('expenses');
 const eventsCol      = makeRecordCollection('events');
 const examResultsCol = makeRecordCollection('examResults');
 const timetableCol   = makeRecordCollection('timetable');
@@ -1022,6 +1071,7 @@ let feeFilterClass = null;
 let feeFilterStatus = null;
 let attendanceRecords = {};
 let notices = [];
+let expenses = [];
 let loginLog = [];
 let idCounter = 1;
 let schoolSettings = { name:'Pakistan Public School Kamber', address:'Kamber, Sindh', principal:'', contact:'' };
@@ -1059,7 +1109,7 @@ function setAdminAuthCache(email, hash){
 
 // ===== STORAGE FUNCTIONS =====
 function saveData(){
-  const data = { students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, workPlans, qrScanLog, savedAt: new Date().toISOString() };
+  const data = { students, staff, fees, attendanceRecords, notices, expenses, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, workPlans, qrScanLog, savedAt: new Date().toISOString() };
   const s = document.getElementById('saveStatus');
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -1420,7 +1470,7 @@ function removePendingSync(field, action, item){
 // sync try karo.
 function reapplyPendingSync(){
   if(!pendingSync.length) return;
-  const arraysByField = { students, staff, fees, notices, loginLog, events, examResults, quoteLog, timetable, homework, workPlans, qrScanLog, galleryPhotos };
+  const arraysByField = { students, staff, fees, notices, expenses, loginLog, events, examResults, quoteLog, timetable, homework, workPlans, qrScanLog, galleryPhotos };
   pendingSync.forEach(p => {
     const arr = arraysByField[p.field];
     if(!Array.isArray(arr)) return;
@@ -1457,6 +1507,7 @@ function applyData(data){
     attendanceRecords = normalized;
   }
   if(data.notices) notices = data.notices;
+  if(data.expenses) expenses = data.expenses;
   if(data.loginLog) loginLog = data.loginLog;
   if(data.idCounter) idCounter = data.idCounter;
   if(data.schoolSettings) schoolSettings = data.schoolSettings;
@@ -1515,6 +1566,7 @@ function loadData(){
     if(cd.students) migrateOldRecordsIfNeeded(studentsCol, cd.students, 'students', SCHOOL_DOC);
     if(cd.staff) migrateOldRecordsIfNeeded(staffCol, cd.staff, 'staff', SCHOOL_DOC);
     if(cd.notices) migrateOldRecordsIfNeeded(noticesCol, cd.notices, 'notices', SCHOOL_DOC);
+    if(cd.expenses) migrateOldRecordsIfNeeded(expensesCol, cd.expenses, 'expenses', SCHOOL_DOC);
     if(cd.events) migrateOldRecordsIfNeeded(eventsCol, cd.events, 'events', SCHOOL_DOC);
     if(cd.examResults) migrateOldRecordsIfNeeded(examResultsCol, cd.examResults, 'examResults', SCHOOL_DOC);
     if(cd.timetable) migrateOldRecordsIfNeeded(timetableCol, cd.timetable, 'timetable', SCHOOL_DOC);
@@ -1528,6 +1580,7 @@ function loadData(){
       loadAndListenRecordCollection(studentsCol, ()=>students, (a)=>{students=a;}),
       loadAndListenRecordCollection(staffCol, ()=>staff, (a)=>{staff=a;}),
       loadAndListenRecordCollection(noticesCol, ()=>notices, (a)=>{notices=a;}),
+      loadAndListenRecordCollection(expensesCol, ()=>expenses, (a)=>{expenses=a;}),
       loadAndListenRecordCollection(eventsCol, ()=>events, (a)=>{events=a;}),
       loadAndListenRecordCollection(examResultsCol, ()=>examResults, (a)=>{examResults=a;}),
       loadAndListenRecordCollection(timetableCol, ()=>timetable, (a)=>{timetable=a;}),
@@ -1540,7 +1593,7 @@ function loadData(){
       listenCurrentMonthAttendance();
       listenCurrentMonthQrScan();
       renderOnly();
-      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ students, staff, fees, attendanceRecords, notices, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, workPlans, qrScanLog })); }catch(e){} try{ localStorage.setItem(STORAGE_KEY + '_gallery', JSON.stringify(galleryPhotos)); }catch(e){}
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({ students, staff, fees, attendanceRecords, notices, expenses, loginLog, idCounter, schoolSettings, events, examResults, waSettings, quoteLog, timetable, homework, workPlans, qrScanLog })); }catch(e){} try{ localStorage.setItem(STORAGE_KEY + '_gallery', JSON.stringify(galleryPhotos)); }catch(e){}
       // Presence sirf heartbeat timestamps se track hoti hai, koi realtime
       // "logout" event nahi hota — is liye har 15 second mein dashboard/staff
       // page (agar khula ho) dobara render karte hain taake koi staff jo tab
@@ -1571,7 +1624,7 @@ function loadData(){
 
 // ===== BACKUP =====
 function backupData(){
-  const data = { students, staff, fees, attendanceRecords, notices, idCounter, schoolSettings, events, galleryPhotos, examResults, waSettings, quoteLog, exportedAt: new Date().toISOString() };
+  const data = { students, staff, fees, attendanceRecords, notices, expenses, idCounter, schoolSettings, events, galleryPhotos, examResults, waSettings, quoteLog, exportedAt: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1968,10 +2021,11 @@ function doLogout(){
 // ===== NAVIGATION =====
 function showView(name){
   if(name==='fees' && (!session || session.role !== 'admin')){ alert('Sirf Admin Fees section dekh sakta hai.'); return; }
+  if(name==='expenses' && (!session || session.role !== 'admin')){ alert('Sirf Admin Expenses section dekh sakta hai.'); return; }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   document.querySelectorAll('.nav-list button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
-  const titles = {dashboard:'Dashboard', students:'Student Management', staff:'Teachers & Staff', fees:'Fees & Challan', attendance:'Attendance', qrattendance:'QR Code Attendance', timetable:'Timetable', homework:'Homework / Assignments', workplan:'Weekly Work Plan', notices:'Notice Board', events:'Events & Vacations', gallery:'Photo Gallery', results:'Results / Exam Reports', quotes:'WhatsApp Awareness', reports:'Reports', settings:'Settings & Backup', loginlog:'Login Activity'};
+  const titles = {dashboard:'Dashboard', students:'Student Management', staff:'Teachers & Staff', fees:'Fees & Challan', expenses:'School Expenses', attendance:'Attendance', qrattendance:'QR Code Attendance', timetable:'Timetable', homework:'Homework / Assignments', workplan:'Weekly Work Plan', notices:'Notice Board', events:'Events & Vacations', gallery:'Photo Gallery', results:'Results / Exam Reports', quotes:'WhatsApp Awareness', reports:'Reports', settings:'Settings & Backup', loginlog:'Login Activity'};
   document.getElementById('viewTitle').textContent = titles[name];
   // Track which page is on screen right now, and refresh ONLY that page's
   // data. Previously every add/edit/sync anywhere in the app re-rendered
@@ -1993,6 +2047,7 @@ function renderCurrentView(){
     case 'students': renderStudents(); break;
     case 'staff': renderStaff(); break;
     case 'fees': renderFees(); renderFeeStudentOptions(); renderFeeClassOptions(); break;
+    case 'expenses': renderExpenses(); break;
     case 'attendance': renderAttendanceForm(); break;
     case 'qrattendance': renderQrAttendanceView(); break;
     case 'timetable': renderTimetableView(); break;
@@ -3140,6 +3195,58 @@ function shareNoticeWhatsApp(id){
   if(!n) return;
   const msg = '📢 ' + schoolSettings.name + ' — Notice\n\n*' + n.title + '*\n' + (n.body||'') + '\n\n(' + n.date + ')';
   window.open(waLinkFor(msg), '_blank');
+}
+
+// ===== SCHOOL EXPENSES =====
+function addExpense(){
+  if(!session || session.role !== 'admin'){ alert('Sirf Admin expense add kar sakta hai.'); return; }
+  const date = document.getElementById('expDate').value || localDateStr();
+  const category = document.getElementById('expCategory').value || 'Misc';
+  const amount = Number(document.getElementById('expAmount').value);
+  const note = (document.getElementById('expNote').value || '').trim();
+  if(!amount || amount <= 0){ alert('Sahi amount likhein.'); return; }
+  const item = { id: newId(), date, category, amount, note, createdAt: new Date().toISOString() };
+  expenses.push(item);
+  expensesCol.add(item);
+  document.getElementById('expAmount').value = '';
+  document.getElementById('expNote').value = '';
+  renderExpenses();
+  saveData();
+  alert('Expense add ho gaya: Rs. ' + amount);
+}
+function deleteExpense(id){
+  if(!session || session.role !== 'admin'){ alert('Sirf Admin delete kar sakta hai.'); return; }
+  if(!confirm('Yeh expense delete karein?')) return;
+  expenses = expenses.filter(e => e.id !== id);
+  expensesCol.remove(id);
+  renderExpenses();
+  saveData();
+}
+function renderExpenses(){
+  const tbody = document.getElementById('expTable');
+  const empty = document.getElementById('expEmpty');
+  const hint = document.getElementById('expTotalHint');
+  if(!tbody) return;
+  const monthFilter = (document.getElementById('expFilterMonth') || {}).value || '';
+  const catFilter = (document.getElementById('expFilterCat') || {}).value || '';
+  let list = expenses.slice().sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  if(monthFilter) list = list.filter(e => (e.date||'').startsWith(monthFilter));
+  if(catFilter) list = list.filter(e => e.category === catFilter);
+  let total = 0;
+  const rowsHtml = [];
+  list.forEach(e => {
+    total += Number(e.amount) || 0;
+    rowsHtml.push(`<tr>
+      <td>${e.date||'—'}</td>
+      <td>${e.category||'—'}</td>
+      <td>Rs. ${Number(e.amount)||0}</td>
+      <td>${e.note||'—'}</td>
+      <td>${session && session.role==='admin' ? '<button class="btn small red" onclick="deleteExpense('+e.id+')">Delete</button>' : ''}</td>
+    </tr>`);
+  });
+  tbody.innerHTML = rowsHtml.join('');
+  if(empty) empty.style.display = list.length ? 'none' : 'block';
+  if(hint) hint.textContent = 'Total (filter ke hisaab se): Rs. ' + total.toLocaleString();
 }
 
 // ===== EVENTS =====
