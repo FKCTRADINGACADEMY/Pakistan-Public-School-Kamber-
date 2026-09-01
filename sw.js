@@ -1,24 +1,27 @@
 // Pakistan Public School Kamber — Service Worker
-// Simple offline + update support for the school management PWA
+// Strong automatic update support for installed PWAs
 
-const CACHE_NAME = 'pps-kamber-v3';
+const CACHE_NAME = 'pps-kamber-v5';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './app-logo.png',
   './icon-192x192.png',
-  './icon-512x512.png'
+  './icon-512x512.png',
+  './sw.js'
 ];
 
+// Install: cache core assets and activate immediately
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(ASSETS))
+      .then((cache) => cache.addAll(ASSETS).catch(() => {}))
       .then(() => self.skipWaiting())
   );
 });
 
+// Activate: delete old caches + take control of all open clients
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -29,38 +32,56 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Fetch strategy:
+// - HTML / navigation → network-first (so new deploys appear quickly)
+// - static assets → stale-while-revalidate (fast + eventually fresh)
 self.addEventListener('fetch', (event) => {
-  // Network-first for HTML, cache-first for static assets
-  const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
 
-  if (url.pathname.endsWith('.html') || url.pathname === '/' || url.pathname.endsWith('/')) {
+  const url = new URL(event.request.url);
+
+  // Same-origin only
+  if (url.origin !== self.location.origin) return;
+
+  const isHTML = event.request.mode === 'navigate' ||
+    url.pathname.endsWith('.html') ||
+    url.pathname === '/' ||
+    url.pathname.endsWith('/');
+
+  if (isHTML) {
     event.respondWith(
       fetch(event.request)
         .then((res) => {
           const copy = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(event.request, copy));
+          caches.open(CACHE_NAME).then((c) => c.put(event.request, copy)).catch(() => {});
           return res;
         })
-        .catch(() => caches.match(event.request).then((r) => r || caches.match('./index.html')))
+        .catch(() =>
+          caches.match(event.request).then((r) => r || caches.match('./index.html'))
+        )
     );
     return;
   }
 
+  // Stale-while-revalidate for images, js, json, css
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((res) => {
-        if (res.ok && (url.pathname.endsWith('.png') || url.pathname.endsWith('.js') || url.pathname.endsWith('.json') || url.pathname.endsWith('.css'))) {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(event.request, copy));
-        }
-        return res;
-      }).catch(() => cached);
-    })
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.match(event.request).then((cached) => {
+        const networkFetch = fetch(event.request)
+          .then((res) => {
+            if (res && res.ok) {
+              cache.put(event.request, res.clone()).catch(() => {});
+            }
+            return res;
+          })
+          .catch(() => cached);
+        return cached || networkFetch;
+      })
+    )
   );
 });
 
-// Listen for SKIP_WAITING from the page (update banner)
+// Allow page to force activation of waiting worker
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();

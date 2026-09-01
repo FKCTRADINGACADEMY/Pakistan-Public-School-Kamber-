@@ -3993,51 +3993,62 @@ window.addEventListener('offline', ()=>{
 <div id="swUpdateBanner" style="display:none; position:fixed; left:12px; right:12px; bottom:16px; z-index:9999;
   background:#0E6B4C; color:#fff; border-radius:12px; padding:12px 16px; box-shadow:0 8px 28px rgba(0,0,0,0.28);
   font-family:Manrope,sans-serif; font-size:13.5px; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-  <span>🔄 Naya version ready hai — update karein taake latest features milen.</span>
+  <span>🔄 Naya version mil gaya — app update ho rahi hai…</span>
   <button onclick="window.location.reload()" style="background:#C99A3A; color:#123D2E; border:none; border-radius:10px; padding:8px 16px; font-weight:700; cursor:pointer;">Update Now</button>
 </div>
 
 <!-- ===== SERVICE WORKER REGISTRATION (AUTO-UPDATE) ===== -->
 <script>
   if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('sw.js')
-      .then(function(reg) {
-        console.log('✅ Service Worker registered successfully:', reg);
-
-        // Pehle har 3s check hota tha — battery + network waste + possible
-        // reload loops. Ab 60s + tab visible hone par check.
-        setInterval(function() {
-          reg.update();
-        }, 60000);
-        document.addEventListener('visibilitychange', function(){
-          if(document.visibilityState === 'visible') reg.update();
-        });
-
-        // Naya version mil jaye to activate, lekin hard-reload tab hi jab
-        // user "Update Now" dabaaye (controllerchange). Beech me banner dikhao.
-        reg.addEventListener('updatefound', function() {
-          const newWorker = reg.installing;
-          if (!newWorker) return;
-          newWorker.addEventListener('statechange', function() {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              newWorker.postMessage({ type: 'SKIP_WAITING' });
-              const ban = document.getElementById('swUpdateBanner');
-              if(ban) ban.style.display = 'flex';
-            }
-          });
-        });
-      })
-      .catch(function(err) {
-        console.log('❌ Service Worker registration failed:', err);
-      });
-
-    // User jab Update Now dabaaye / naya SW control le to ek dafa reload
     let refreshing = false;
+
+    // When a new SW takes control → automatic reload (installed PWAs get the new version)
     navigator.serviceWorker.addEventListener('controllerchange', function() {
       if (refreshing) return;
       refreshing = true;
       window.location.reload();
     });
+
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+      .then(function(reg) {
+        console.log('✅ Service Worker registered:', reg.scope);
+
+        // Check for updates every 45s + when tab becomes visible
+        setInterval(function(){ reg.update().catch(function(){}); }, 45000);
+        document.addEventListener('visibilitychange', function(){
+          if(document.visibilityState === 'visible') reg.update().catch(function(){});
+        });
+        // Also check once shortly after load
+        setTimeout(function(){ reg.update().catch(function(){}); }, 8000);
+
+        // New version found → force activate + show brief banner, then auto-reload via controllerchange
+        reg.addEventListener('updatefound', function() {
+          const newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', function() {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // Tell waiting worker to become active immediately
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
+              const ban = document.getElementById('swUpdateBanner');
+              if(ban){
+                ban.style.display = 'flex';
+                // Auto-reload after 2.5s if user doesn't click (fully automatic for installed PWAs)
+                setTimeout(function(){
+                  if(!refreshing) window.location.reload();
+                }, 2500);
+              }
+            }
+          });
+        });
+
+        // If a worker is already waiting (e.g. previous visit), activate it now
+        if (reg.waiting) {
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+      })
+      .catch(function(err) {
+        console.log('❌ Service Worker registration failed:', err);
+      });
   }
 </script>
 
