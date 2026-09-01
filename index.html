@@ -24,41 +24,125 @@
   button{font-family:'Manrope',sans-serif; cursor:pointer;}
   input,select{font-family:'Manrope',sans-serif;}
 
-  /* ===== LOGIN SCREEN ===== */
+  /* ===== LOGIN SCREEN (modern design matching official crest UI) ===== */
   #loginScreen{
-    min-height:100vh; display:flex; align-items:center; justify-content:center;
-    background:var(--navy); background-image:radial-gradient(rgba(201,154,58,0.14) 1.5px, transparent 1.5px);
-    background-size:22px 22px;
-    padding:20px;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background: linear-gradient(165deg, #e8f4ff 0%, #f0f7ff 35%, #ffffff 70%, #f5f9ff 100%);
+    padding:24px 16px 40px; position:relative; overflow-x:hidden;
   }
-  .login-card{
-    background:var(--paper); width:100%; max-width:380px; border-radius:14px;
-    border:1px solid var(--rule); padding:34px 30px; box-shadow:0 20px 60px rgba(0,0,0,0.35);
+  #loginScreen::before{
+    content:''; position:absolute; inset:0; pointer-events:none; opacity:0.09;
+    background-image:
+      radial-gradient(circle at 12% 18%, #3b82f6 0, transparent 22%),
+      radial-gradient(circle at 88% 12%, #60a5fa 0, transparent 18%),
+      radial-gradient(circle at 80% 78%, #93c5fd 0, transparent 20%);
   }
+  .login-hero{ text-align:center; position:relative; z-index:2; margin-bottom:6px; max-width:420px; width:100%; }
   .login-crest{
-    width:74px; height:74px; border-radius:50%; margin:0 auto 14px;
-    display:block; object-fit:cover; background:#fff;
-    border:2px solid var(--gold); box-shadow:0 4px 14px rgba(0,0,0,0.25);
+    width:118px; height:118px; margin:0 auto 10px; display:block;
+    object-fit:contain; background:transparent; border:none; border-radius:0;
+    filter: drop-shadow(0 6px 16px rgba(15,60,120,0.18));
   }
-  .login-card h1{font-size:16px; text-align:center; line-height:1.35;}
-  .login-card .sub{text-align:center; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--gold); margin-top:6px; margin-bottom:22px; font-family:'JetBrains Mono',monospace;}
-  .role-toggle{display:flex; border:1px solid var(--rule); border-radius:11px; overflow:hidden; margin-bottom:18px;}
-  .role-toggle button{flex:1; padding:9px 0; border:none; background:var(--paper); font-size:12.5px; font-weight:600; color:var(--muted);}
-  .role-toggle button.active-admin{background:var(--green); color:#fff;}
-  .role-toggle button.active-user{background:var(--maroon); color:#fff;}
-  .field{margin-bottom:13px;}
-  .field label{display:block; font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); margin-bottom:5px; font-family:'JetBrains Mono',monospace;}
-  .field input{width:100%; padding:10px 11px; border:1px solid var(--rule); border-radius:10px; font-size:13.5px; background:#fff;}
-  .field input:focus{outline:2px solid var(--gold); border-color:var(--gold);}
-  .login-btn{width:100%; padding:11px 0; border:none; border-radius:10px; color:#fff; font-size:14px; font-weight:600; margin-top:6px;}
-  .login-btn.admin{background:var(--green);}
-  .login-btn.user{background:var(--maroon);}
-  .login-btn:disabled{opacity:0.55; cursor:not-allowed;}
-  .login-hint{margin-top:16px; font-size:12px; color:var(--navy); background:var(--cream); border-left:3px solid var(--gold); border-radius:10px; padding:12px 13px; line-height:1.6; font-family:'Fraunces',serif; font-style:italic; text-align:center;}
-  .login-error{color:var(--red); font-size:12px; margin-top:8px; display:none; font-weight:600;}
-  .offline-note{margin-top:12px; text-align:center; font-size:10.5px; color:#8892AC;}
-  .dev-credit{margin-top:14px; padding-top:12px; border-top:1px solid var(--rule); text-align:center; font-size:10px; color:var(--muted); font-family:'JetBrains Mono',monospace; letter-spacing:0.3px;}
-  .dev-credit b{color:var(--navy);}
+  .login-hero h1{
+    font-family:'Manrope',sans-serif; font-size:22px; font-weight:800; color:#1e3a8a;
+    line-height:1.25; letter-spacing:-0.3px; margin:4px 0 0;
+  }
+  .login-hero .tagline{
+    font-size:12.5px; color:#64748b; margin-top:6px; letter-spacing:1.5px;
+    font-weight:600; text-transform:uppercase;
+  }
+  .login-hero .tagline span{ color:#94a3b8; margin:0 4px; }
+  .login-card{
+    background:#fff; width:100%; max-width:380px; border-radius:22px;
+    padding:22px 22px 20px; box-shadow:0 18px 50px rgba(30,64,175,0.12), 0 4px 14px rgba(0,0,0,0.04);
+    border:1px solid rgba(226,232,240,0.9); position:relative; z-index:2;
+  }
+  .role-toggle{ display:flex; gap:10px; margin-bottom:18px; }
+  .role-toggle button{
+    flex:1; display:flex; align-items:center; justify-content:center; gap:7px;
+    padding:11px 8px; border:none; border-radius:12px; font-size:13px; font-weight:700;
+    color:#fff; transition: transform .15s, box-shadow .15s, opacity .15s;
+  }
+  .role-toggle button:active{ transform:scale(0.97); }
+  .role-toggle button#tabAdmin{
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    box-shadow:0 4px 12px rgba(37,99,235,0.35);
+  }
+  .role-toggle button#tabUser{
+    background: linear-gradient(135deg, #16a34a, #15803d);
+    box-shadow:0 4px 12px rgba(22,163,74,0.3);
+  }
+  .role-toggle button:not(.active-admin):not(.active-user){
+    opacity:0.55; box-shadow:none; filter:grayscale(0.2);
+  }
+  .role-toggle button.active-admin, .role-toggle button.active-user{ opacity:1; }
+  .login-input-wrap{ position:relative; margin-bottom:12px; }
+  .login-input-wrap .ico{
+    position:absolute; left:14px; top:50%; transform:translateY(-50%);
+    font-size:15px; color:#94a3b8; pointer-events:none; line-height:1;
+  }
+  .login-input-wrap input{
+    width:100%; padding:13px 42px 13px 42px; border:1.5px solid #e2e8f0;
+    border-radius:12px; font-size:14px; background:#f8fafc; color:#1e293b;
+    transition:border-color .15s, background .15s, box-shadow .15s;
+  }
+  .login-input-wrap input:focus{
+    outline:none; border-color:#3b82f6; background:#fff;
+    box-shadow:0 0 0 3px rgba(59,130,246,0.15);
+  }
+  .login-input-wrap .eye-btn{
+    position:absolute; right:10px; top:50%; transform:translateY(-50%);
+    background:none; border:none; padding:6px; font-size:15px; color:#94a3b8; cursor:pointer;
+  }
+  .login-options{ display:flex; align-items:center; justify-content:space-between; margin:10px 0 16px; font-size:12.5px; }
+  .login-options label{ display:flex; align-items:center; gap:6px; color:#64748b; cursor:pointer; user-select:none; }
+  .login-options input[type=checkbox]{ width:15px; height:15px; accent-color:#2563eb; }
+  .login-options a{ color:#2563eb; text-decoration:none; font-weight:600; }
+  .login-options a:hover{ text-decoration:underline; }
+  .login-btn{
+    width:100%; padding:13px 16px; border:none; border-radius:12px; color:#fff;
+    font-size:15px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    box-shadow:0 6px 18px rgba(37,99,235,0.35); transition: transform .12s, box-shadow .12s;
+  }
+  .login-btn:hover{ box-shadow:0 8px 22px rgba(37,99,235,0.45); }
+  .login-btn:active{ transform:scale(0.985); }
+  .login-btn.user{ background: linear-gradient(135deg, #16a34a, #15803d); box-shadow:0 6px 18px rgba(22,163,74,0.35); }
+  .login-btn:disabled{ opacity:0.6; cursor:not-allowed; transform:none; }
+  .login-error{ color:#dc2626; font-size:12.5px; margin-top:10px; display:none; font-weight:600; text-align:center; }
+  .login-divider{
+    display:flex; align-items:center; gap:12px; margin:18px 0 14px; color:#94a3b8; font-size:12px;
+  }
+  .login-divider::before, .login-divider::after{ content:''; flex:1; height:1px; background:#e2e8f0; }
+  .social-row{ display:flex; justify-content:center; gap:14px; }
+  .social-btn{
+    width:44px; height:44px; border-radius:50%; border:1.5px solid #e2e8f0; background:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer;
+    transition: background .15s, border-color .15s, transform .12s;
+  }
+  .social-btn:hover{ background:#f8fafc; border-color:#cbd5e1; transform:translateY(-1px); }
+  .login-status{ margin-top:14px; text-align:center; font-size:11px; color:#94a3b8; }
+  .login-footer{
+    margin-top:22px; text-align:center; position:relative; z-index:2; max-width:380px; width:100%;
+  }
+  .login-footer .powered{
+    display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid #e2e8f0;
+    border-radius:20px; padding:7px 14px; font-size:11.5px; color:#64748b; font-weight:600;
+    box-shadow:0 2px 8px rgba(0,0,0,0.04);
+  }
+  .login-footer .powered b{ color:#1e3a8a; }
+  .login-decor{
+    position:absolute; bottom:0; left:0; right:0; height:120px; pointer-events:none; z-index:1;
+    background: linear-gradient(to top, rgba(255,255,255,0.95), transparent);
+    display:flex; align-items:flex-end; justify-content:center; gap:18px; padding-bottom:8px;
+    font-size:42px; opacity:0.85; overflow:hidden;
+  }
+  @media (max-width:480px){
+    .login-crest{ width:96px; height:96px; }
+    .login-hero h1{ font-size:19px; }
+    .login-card{ padding:18px 16px 16px; border-radius:18px; }
+    .role-toggle button{ font-size:12px; padding:10px 6px; }
+  }
 
   /* ===== APP SHELL ===== */
   #appScreen{display:none;}
@@ -280,7 +364,6 @@
     th,td{padding:7px 6px;}
     .backup-row{flex-direction:column; align-items:stretch;}
     .modal-actions{flex-wrap:wrap;}
-    .login-card{padding:26px 20px;}
   }
 
   @media (max-width: 480px){
@@ -297,26 +380,55 @@
 
 <!-- ===================== LOGIN SCREEN ===================== -->
 <div id="loginScreen">
-  <div class="login-card">
-    <img class="login-crest" src="./app-logo.png" alt="School Logo">
-    <h1>Pakistan Public<br>School, Kamber</h1>
-    <div class="sub">Sign in to continue</div>
+  <div class="login-hero">
+    <img class="login-crest" src="./app-logo.png" alt="Pakistan Public School Kamber Logo">
+    <h1>Pakistan Public<br>School Kamber</h1>
+    <div class="tagline">Learn <span>•</span> Grow <span>•</span> Succeed</div>
+  </div>
 
+  <div class="login-card">
     <div class="role-toggle">
-      <button id="tabAdmin" class="active-admin" onclick="setRole('admin')">Admin</button>
-      <button id="tabUser" onclick="setRole('user')">Staff / User</button>
+      <button id="tabAdmin" class="active-admin" onclick="setRole('admin')">🛡️ Admin Login</button>
+      <button id="tabUser" onclick="setRole('user')">👤 Staff Login</button>
     </div>
 
-    <div class="field"><label>Email / Staff ID</label><input id="loginUser" type="text" placeholder="Enter email (e.g. Pakistanps@ppsk.com)"></div>
-    <div class="field"><label>Password</label><input id="loginPass" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')doLogin()"></div>
-    <button id="loginBtn" class="login-btn admin" onclick="doLogin()" disabled>Login as Admin</button>
+    <div class="login-input-wrap">
+      <span class="ico">👤</span>
+      <input id="loginUser" type="text" placeholder="Email / Username" autocomplete="username">
+    </div>
+    <div class="login-input-wrap">
+      <span class="ico">🔒</span>
+      <input id="loginPass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+      <button type="button" class="eye-btn" onclick="togglePassVisibility()" title="Show / Hide" aria-label="Toggle password">👁️</button>
+    </div>
+
+    <div class="login-options">
+      <label><input type="checkbox" id="rememberMe"> Remember Me</label>
+      <a href="#" onclick="alert('Password reset ke liye school admin se contact karein.'); return false;">Forgot Password?</a>
+    </div>
+
+    <button id="loginBtn" class="login-btn admin" onclick="doLogin()" disabled>🔒 Secure Login →</button>
     <div id="loginError" class="login-error">Ghalat username ya password. Dobara koshish karein.</div>
 
-    <div class="login-hint" id="loginHint">
-      <span id="quoteText">Loading…</span>
+    <div class="login-divider">or continue with</div>
+    <div class="social-row">
+      <button type="button" class="social-btn" title="Google" onclick="alert('Google login abhi available nahi — Email / Password use karein.')">G</button>
+      <button type="button" class="social-btn" title="Microsoft" onclick="alert('Microsoft login abhi available nahi — Email / Password use karein.')">
+        <span style="font-weight:800; color:#00a4ef;">M</span>
+      </button>
     </div>
-    <div class="offline-note" id="cloudStatusNote">☁️ Cloud database se connect ho raha hai…</div>
-    <div class="dev-credit">Software by <b>Fazul Khan Chandio</b> · +92 333 3909816</div>
+
+    <div class="login-status" id="cloudStatusNote">☁️ Cloud database se connect ho raha hai…</div>
+    <!-- hidden quote holder so existing JS does not break -->
+    <span id="quoteText" style="display:none;"></span>
+  </div>
+
+  <div class="login-footer">
+    <div class="powered">🛡️ Software by <b>Fazul Khan Chandio</b> · +92 333 3909816</div>
+  </div>
+
+  <div class="login-decor" aria-hidden="true">
+    <span>📚</span><span>🎓</span><span>👨‍🎓</span><span>👩‍🎓</span><span>🎒</span><span>✏️</span>
   </div>
 </div>
 
@@ -1662,10 +1774,15 @@ function setRole(role){
   document.getElementById('tabUser').classList.toggle('active-user', role==='user');
   const btn = document.getElementById('loginBtn');
   btn.className = 'login-btn ' + (role==='admin' ? 'admin' : 'user');
-  btn.textContent = role==='admin' ? 'Login as Admin' : 'Login as Staff';
+  btn.innerHTML = role==='admin' ? '🔒 Secure Login →' : '🔒 Staff Secure Login →';
   const userField = document.getElementById('loginUser');
-  userField.placeholder = role==='admin' ? 'Enter email (e.g. Pakistanps@ppsk.com)' : 'Staff ID (e.g. STF-1001)';
+  userField.placeholder = role==='admin' ? 'Email / Username' : 'Staff ID (e.g. STF-1001)';
   document.getElementById('loginError').style.display = 'none';
+}
+function togglePassVisibility(){
+  const el = document.getElementById('loginPass');
+  if(!el) return;
+  el.type = el.type === 'password' ? 'text' : 'password';
 }
 
 // ===== QUOTES =====
@@ -1852,7 +1969,7 @@ function doLogin(){
   }
 
   btn.disabled = true;
-  const originalText = btn.textContent;
+  const originalText = currentRole==='admin' ? '🔒 Secure Login →' : '🔒 Staff Secure Login →';
   btn.textContent = 'Signing in…';
 
   if(currentRole === 'user'){
@@ -2511,7 +2628,7 @@ function challanBlockHTML(label, f, student){
     <div class="challan-copy">
       <div class="copy-tag">${label}</div>
       <div class="challan-head">
-        <img src="app-logo.png" alt="Logo" style="width:44px;height:44px;border-radius:50%;object-fit:cover;margin-bottom:6px;">
+        <img src="./app-logo.png" alt="Logo" style="width:44px;height:44px;border-radius:50%;object-fit:cover;margin-bottom:6px;">
         <h3>${schoolSettings.name}</h3>
         <div class="s">${f.status === 'paid' ? 'FEE RECEIPT' : 'FEE CHALLAN'} — KAMBER</div>
       </div>
@@ -2558,7 +2675,7 @@ function admissionFormHTML(s){
   return `
     <div class="adm-form cert-wrap">
       <div class="adm-form-head">
-        <img src="app-logo.png" alt="Logo" style="width:56px;height:56px;border-radius:50%;object-fit:cover;margin-bottom:8px;">
+        <img src="./app-logo.png" alt="Logo" style="width:56px;height:56px;border-radius:50%;object-fit:cover;margin-bottom:8px;">
         <h3>${schoolSettings.name || 'Pakistan Public School Kamber'}</h3>
         <div class="addr">${schoolSettings.address || 'Kamber, Sindh'}</div>
         <div class="s">Admission Form</div>
@@ -2604,7 +2721,7 @@ function tcFormHTML(s){
   return `
     <div class="tc-form cert-wrap">
       <div class="adm-form-head">
-        <img src="app-logo.png" alt="Logo" style="width:56px;height:56px;border-radius:50%;object-fit:cover;margin-bottom:8px;">
+        <img src="./app-logo.png" alt="Logo" style="width:56px;height:56px;border-radius:50%;object-fit:cover;margin-bottom:8px;">
         <h3>${schoolSettings.name || 'Pakistan Public School Kamber'}</h3>
         <div class="addr">${schoolSettings.address || 'Kamber, Sindh'}</div>
         <div class="s">School Leaving / Transfer Certificate</div>
@@ -2639,7 +2756,7 @@ function idCardHTML(s){
   return `
     <div class="idcard cert-wrap">
       <div class="idcard-head">
-        <img src="app-logo.png" alt="Logo">
+        <img src="./app-logo.png" alt="Logo">
         <h4>${schoolSettings.name || 'Pakistan Public School Kamber'}</h4>
         <div class="s">Student ID Card</div>
       </div>
