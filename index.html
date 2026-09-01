@@ -39,9 +39,9 @@
   }
   .login-hero{ text-align:center; position:relative; z-index:2; margin-bottom:6px; max-width:420px; width:100%; }
   .login-crest{
-    width:118px; height:118px; margin:0 auto 10px; display:block;
+    width:130px; height:130px; margin:0 auto 12px; display:block;
     object-fit:contain; background:transparent; border:none; border-radius:0;
-    filter: drop-shadow(0 6px 16px rgba(15,60,120,0.18));
+    filter: drop-shadow(0 8px 18px rgba(15,60,120,0.2));
   }
   .login-hero h1{
     font-family:'Manrope',sans-serif; font-size:22px; font-weight:800; color:#1e3a8a;
@@ -110,18 +110,7 @@
   .login-btn.user{ background: linear-gradient(135deg, #16a34a, #15803d); box-shadow:0 6px 18px rgba(22,163,74,0.35); }
   .login-btn:disabled{ opacity:0.6; cursor:not-allowed; transform:none; }
   .login-error{ color:#dc2626; font-size:12.5px; margin-top:10px; display:none; font-weight:600; text-align:center; }
-  .login-divider{
-    display:flex; align-items:center; gap:12px; margin:18px 0 14px; color:#94a3b8; font-size:12px;
-  }
-  .login-divider::before, .login-divider::after{ content:''; flex:1; height:1px; background:#e2e8f0; }
-  .social-row{ display:flex; justify-content:center; gap:14px; }
-  .social-btn{
-    width:44px; height:44px; border-radius:50%; border:1.5px solid #e2e8f0; background:#fff;
-    display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer;
-    transition: background .15s, border-color .15s, transform .12s;
-  }
-  .social-btn:hover{ background:#f8fafc; border-color:#cbd5e1; transform:translateY(-1px); }
-  .login-status{ margin-top:14px; text-align:center; font-size:11px; color:#94a3b8; }
+  .login-status{ margin-top:16px; text-align:center; font-size:11px; color:#94a3b8; }
   .login-footer{
     margin-top:22px; text-align:center; position:relative; z-index:2; max-width:380px; width:100%;
   }
@@ -138,7 +127,7 @@
     font-size:42px; opacity:0.85; overflow:hidden;
   }
   @media (max-width:480px){
-    .login-crest{ width:96px; height:96px; }
+    .login-crest{ width:108px; height:108px; }
     .login-hero h1{ font-size:19px; }
     .login-card{ padding:18px 16px 16px; border-radius:18px; }
     .role-toggle button{ font-size:12px; padding:10px 6px; }
@@ -409,14 +398,6 @@
 
     <button id="loginBtn" class="login-btn admin" onclick="doLogin()" disabled>🔒 Secure Login →</button>
     <div id="loginError" class="login-error">Ghalat username ya password. Dobara koshish karein.</div>
-
-    <div class="login-divider">or continue with</div>
-    <div class="social-row">
-      <button type="button" class="social-btn" title="Google" onclick="alert('Google login abhi available nahi — Email / Password use karein.')">G</button>
-      <button type="button" class="social-btn" title="Microsoft" onclick="alert('Microsoft login abhi available nahi — Email / Password use karein.')">
-        <span style="font-weight:800; color:#00a4ef;">M</span>
-      </button>
-    </div>
 
     <div class="login-status" id="cloudStatusNote">☁️ Cloud database se connect ho raha hai…</div>
     <!-- hidden quote holder so existing JS does not break -->
